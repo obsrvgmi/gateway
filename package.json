@@ -1,0 +1,53 @@
+{
+  "name": "gateway",
+  "version": "0.1.0",
+  "description": "Frontend mock of a crypto payment gateway: payment links, hosted checkout and an embeddable widget. Customers pay in any asset, merchants receive their choice via NEAR Intents.",
+  "keywords": [
+    "crypto-payments",
+    "payment-gateway",
+    "payment-links",
+    "checkout-widget",
+    "near-intents",
+    "web3",
+    "nextjs",
+    "react",
+    "typescript",
+    "tailwindcss",
+    "tailwind-v4",
+    "boardui",
+    "react-aria",
+    "app-router",
+    "mock-ui"
+  ],
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@internationalized/date": "^3.12.4",
+    "@remixicon/react": "^4.9.0",
+    "@tanstack/react-table": "^8.21.3",
+    "@web3icons/react": "4.1.24",
+    "motion": "^12.43.0",
+    "next": "16.4.5",
+    "qrcode.react": "^4.2.0",
+    "react": "19.3.0",
+    "react-aria-components": "^1.22.1",
+    "react-dom": "19.3.0",
+    "recharts": "^3.10.1",
+    "tailwind-merge": "^3.7.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.5",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

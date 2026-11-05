@@ -1,0 +1,596 @@
+/* ---------------------------------------------------------------------------
+ * Landing stage and product section. Ours, not BoardUI.
+ *
+ * Layout system: everything hangs off the page's centre axis.
+ *   --gutter  outer margin, shared by the nav, both headlines and both plates.
+ *   --plate   width of the two side plates. They are always equal.
+ *   --card    width of the checkout card, centred on the axis.
+ *   The plates, the card and their ports share one row and one height, so all
+ *   channels run in the two equal gaps between solid objects.
+ *
+ * Depth, back to front: ground and engraved rosette, channels cut into the ground,
+ * then solid plates with ports. Nothing in the scene shows through a plate.
+ *
+ * The tokens below are the only literal colours on the stage.
+ * --------------------------------------------------------------------------- */
+:root {
+  --gutter: 1rem;
+  --plate: clamp(13rem, 14.5vw, 15.5rem);
+  --card: clamp(21rem, 26.4vw, 25rem);
+  --dock-pitch: 2.375rem;
+  --socket: 0.8125rem;
+  --socket-main: 1.125rem;
+
+  --stage-ground: #f3f8f6;
+  --stage-ground-deep: #e4efea;
+  --stage-bloom: rgb(0 236 151 / 0.16);
+  --stage-engrave: rgb(4 90 62 / 0.07);
+  --stage-flow: #00c483;
+  --stage-surface: #ffffff;
+  --stage-surface-low: #fafdfb;
+  --stage-recess: #edf3f0;
+  --stage-edge: rgb(6 40 30 / 0.1);
+  --stage-sheen: rgb(255 255 255 / 1);
+  /* Bezel: the machined edge, as a lit gradient that runs round the plate. */
+  --plate-bezel: linear-gradient(150deg, #ffffff 0%, #bfd2ca 26%, #f2f7f5 52%, #a9c2b8 78%, #e8f0ec 100%);
+  --plate-line: rgb(0 112 78 / 0.26);
+  --plate-engrave: rgb(0 112 78 / 0.15);
+  --groove-floor: #cfdcd7;
+  --groove-wall: rgb(6 40 30 / 0.34);
+  --groove-edge: #ffffff;
+  --pulse-head: 82%;
+  --groove-tint: 13%;
+  --socket-metal: linear-gradient(160deg, #ffffff 0%, #b8cbc3 48%, #eaf1ee 100%);
+  --socket-well: #0c1a16;
+  --stage-paper: #ffffff;
+  --stage-paper-ink: #04130d;
+  --stage-lift:
+    0 0 0 1px rgb(6 40 30 / 0.06),
+    0 1px 1px rgb(6 40 30 / 0.05),
+    0 6px 14px -6px rgb(6 40 30 / 0.12),
+    0 22px 44px -14px rgb(6 40 30 / 0.16),
+    0 60px 90px -36px rgb(0 90 60 / 0.2);
+}
+
+.dark {
+  --stage-ground: #06110e;
+  --stage-ground-deep: #020806;
+  --stage-bloom: rgb(0 236 151 / 0.13);
+  --stage-engrave: rgb(120 255 205 / 0.08);
+  --stage-flow: #00ec97;
+  --stage-surface: #121f1b;
+  --stage-surface-low: #0d1815;
+  --stage-recess: #08110e;
+  --stage-edge: rgb(190 255 230 / 0.09);
+  --stage-sheen: rgb(220 255 240 / 0.14);
+  --plate-bezel: linear-gradient(150deg, rgb(226 255 243 / 0.5) 0%, rgb(120 170 150 / 0.14) 26%, rgb(226 255 243 / 0.3) 52%, rgb(120 170 150 / 0.1) 78%, rgb(226 255 243 / 0.24) 100%);
+  --plate-line: rgb(0 236 151 / 0.2);
+  --plate-engrave: rgb(0 236 151 / 0.13);
+  --groove-floor: #020806;
+  --groove-wall: #000000;
+  --groove-edge: rgb(190 255 230 / 0.16);
+  --pulse-head: 42%;
+  --groove-tint: 9%;
+  --socket-metal: linear-gradient(160deg, #7f9c91 0%, #26372f 48%, #5b7468 100%);
+  --socket-well: #020705;
+  --stage-paper: #e6f1ec;
+  --stage-paper-ink: #04130d;
+  --stage-lift:
+    0 0 0 1px rgb(190 255 230 / 0.09),
+    0 2px 4px rgb(0 0 0 / 0.5),
+    0 14px 30px -10px rgb(0 0 0 / 0.65),
+    0 44px 90px -24px rgb(0 0 0 / 0.8);
+}
+
+@utility hero-display {
+  font-size: clamp(2.875rem, min(6.1vw, 10vh), 6.5rem);
+  line-height: 1;
+  letter-spacing: -0.038em;
+  font-weight: 570;
+}
+
+@utility section-display {
+  font-size: clamp(2.25rem, 4.2vw, 3.75rem);
+  line-height: 1.04;
+  letter-spacing: -0.034em;
+  font-weight: 570;
+  text-wrap: balance;
+}
+
+/* ----- Ground ------------------------------------------------------------- */
+.stage {
+  --px: 0;
+  --py: 0;
+  background:
+    radial-gradient(70% 62% at 50% 60%, var(--stage-bloom), transparent 72%),
+    radial-gradient(130% 110% at 50% 45%, var(--stage-ground) 40%, var(--stage-ground-deep) 100%);
+}
+.stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.35;
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+}
+.stage-art {
+  position: absolute;
+  top: 60%;
+  left: 50%;
+  z-index: -1;
+  width: max(118vh, 62rem);
+  aspect-ratio: 1;
+  color: var(--stage-engrave);
+  pointer-events: none;
+  transform: translate(calc(-50% + var(--px) * -8px), calc(-50% + var(--py) * -8px));
+  -webkit-mask-image: radial-gradient(closest-side, #000 52%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 52%, transparent 100%);
+}
+.stage.is-page .stage-art { top: 50%; color: color-mix(in srgb, var(--stage-engrave) 100%, var(--color-text-accent) 12%); }
+
+/* ----- Frame -------------------------------------------------------------- */
+.stage-nav {
+  display: flex;
+  max-width: 110rem;
+  margin-inline: auto;
+  padding: 1rem var(--gutter);
+  align-items: center;
+  justify-content: space-between;
+}
+.stage-login:not(:hover) { background: transparent; color: var(--color-text-primary); }
+
+.stage-frame {
+  position: relative;
+  display: flex;
+  width: 100%;
+  max-width: 110rem;
+  flex: 1;
+  flex-direction: column;
+  gap: 2.25rem;
+  margin-inline: auto;
+  padding: 5rem var(--gutter) 2rem;
+}
+
+.stage-head { position: relative; display: flex; flex-direction: column; gap: 0.75rem; text-align: center; align-items: center; }
+.stage-lede { max-width: 38ch; font-size: 1.0625rem; line-height: 1.55; color: var(--color-text-secondary); text-wrap: pretty; }
+.stage-lede-out { margin-top: -0.5rem; }
+.stage-powered { order: -1; display: inline-flex; align-items: center; gap: 0.5rem; }
+.stage-powered-dot { width: 0.4375rem; height: 0.4375rem; border-radius: 999px; background: var(--color-accent-500); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-500) 22%, transparent); }
+
+/* ----- Plates --------------------------------------------------------------
+ * The one material on this page, shared by the hero, /pay and the product stage:
+ * a solid sheet in a machined bezel, a printed hairline inside it, and an
+ * engraved line pattern that fades in from the corners. ::before is the hairline,
+ * ::after the engraving; both sit under the content.
+ * --------------------------------------------------------------------------- */
+.stage-plate,
+.stage-card {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(180deg, var(--stage-surface) 0%, var(--stage-surface-low) 100%) padding-box,
+    var(--plate-bezel) border-box;
+  box-shadow: inset 0 1px 0 var(--stage-sheen), var(--stage-lift);
+}
+.stage-plate::before,
+.stage-card::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0.3125rem;
+  border: 1px solid var(--plate-line);
+  border-radius: calc(var(--plate-radius, 1.5rem) - 0.375rem);
+  pointer-events: none;
+}
+.stage-plate::after,
+.stage-card::after {
+  content: "";
+  position: absolute;
+  z-index: -2;
+  inset: 0.3125rem;
+  border-radius: calc(var(--plate-radius, 1.5rem) - 0.375rem);
+  pointer-events: none;
+  background: var(--plate-engrave);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='60'%3E%3Cg fill='none' stroke='%23000' stroke-width='.5'%3E%3Cpath d='M0 30.0L6 36.8L12 42.9L18 47.8L24 50.9L30 52.0L36 50.9L42 47.8L48 42.9L54 36.8L60 30.0L66 23.2L72 17.1L78 12.2L84 9.1L90 8.0L96 9.1L102 12.2L108 17.1L114 23.2L120 30.0L126 36.8L132 42.9L138 47.8L144 50.9L150 52.0L156 50.9L162 47.8L168 42.9L174 36.8L180 30.0L186 23.2L192 17.1L198 12.2L204 9.1L210 8.0L216 9.1L222 12.2L228 17.1L234 23.2L240 30.0 M0 49.1L6 51.5L12 51.9L18 50.1L24 46.3L30 41.0L36 34.6L42 27.7L48 21.1L54 15.3L60 10.9L66 8.5L72 8.1L78 9.9L84 13.7L90 19.0L96 25.4L102 32.3L108 38.9L114 44.7L120 49.1L126 51.5L132 51.9L138 50.1L144 46.3L150 41.0L156 34.6L162 27.7L168 21.1L174 15.3L180 10.9L186 8.5L192 8.1L198 9.9L204 13.7L210 19.0L216 25.4L222 32.3L228 38.9L234 44.7L240 49.1 M0 49.1L6 44.7L12 38.9L18 32.3L24 25.4L30 19.0L36 13.7L42 9.9L48 8.1L54 8.5L60 10.9L66 15.3L72 21.1L78 27.7L84 34.6L90 41.0L96 46.3L102 50.1L108 51.9L114 51.5L120 49.1L126 44.7L132 38.9L138 32.3L144 25.4L150 19.0L156 13.7L162 9.9L168 8.1L174 8.5L180 10.9L186 15.3L192 21.1L198 27.7L204 34.6L210 41.0L216 46.3L222 50.1L228 51.9L234 51.5L240 49.1 M0 30.0L6 23.2L12 17.1L18 12.2L24 9.1L30 8.0L36 9.1L42 12.2L48 17.1L54 23.2L60 30.0L66 36.8L72 42.9L78 47.8L84 50.9L90 52.0L96 50.9L102 47.8L108 42.9L114 36.8L120 30.0L126 23.2L132 17.1L138 12.2L144 9.1L150 8.0L156 9.1L162 12.2L168 17.1L174 23.2L180 30.0L186 36.8L192 42.9L198 47.8L204 50.9L210 52.0L216 50.9L222 47.8L228 42.9L234 36.8L240 30.0 M0 10.9L6 8.5L12 8.1L18 9.9L24 13.7L30 19.0L36 25.4L42 32.3L48 38.9L54 44.7L60 49.1L66 51.5L72 51.9L78 50.1L84 46.3L90 41.0L96 34.6L102 27.7L108 21.1L114 15.3L120 10.9L126 8.5L132 8.1L138 9.9L144 13.7L150 19.0L156 25.4L162 32.3L168 38.9L174 44.7L180 49.1L186 51.5L192 51.9L198 50.1L204 46.3L210 41.0L216 34.6L222 27.7L228 21.1L234 15.3L240 10.9 M0 10.9L6 15.3L12 21.1L18 27.7L24 34.6L30 41.0L36 46.3L42 50.1L48 51.9L54 51.5L60 49.1L66 44.7L72 38.9L78 32.3L84 25.4L90 19.0L96 13.7L102 9.9L108 8.1L114 8.5L120 10.9L126 15.3L132 21.1L138 27.7L144 34.6L150 41.0L156 46.3L162 50.1L168 51.9L174 51.5L180 49.1L186 44.7L192 38.9L198 32.3L204 25.4L210 19.0L216 13.7L222 9.9L228 8.1L234 8.5L240 10.9'/%3E%3C/g%3E%3C/svg%3E"), radial-gradient(120% 100% at 100% 0%, #000 0%, transparent 52%);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='60'%3E%3Cg fill='none' stroke='%23000' stroke-width='.5'%3E%3Cpath d='M0 30.0L6 36.8L12 42.9L18 47.8L24 50.9L30 52.0L36 50.9L42 47.8L48 42.9L54 36.8L60 30.0L66 23.2L72 17.1L78 12.2L84 9.1L90 8.0L96 9.1L102 12.2L108 17.1L114 23.2L120 30.0L126 36.8L132 42.9L138 47.8L144 50.9L150 52.0L156 50.9L162 47.8L168 42.9L174 36.8L180 30.0L186 23.2L192 17.1L198 12.2L204 9.1L210 8.0L216 9.1L222 12.2L228 17.1L234 23.2L240 30.0 M0 49.1L6 51.5L12 51.9L18 50.1L24 46.3L30 41.0L36 34.6L42 27.7L48 21.1L54 15.3L60 10.9L66 8.5L72 8.1L78 9.9L84 13.7L90 19.0L96 25.4L102 32.3L108 38.9L114 44.7L120 49.1L126 51.5L132 51.9L138 50.1L144 46.3L150 41.0L156 34.6L162 27.7L168 21.1L174 15.3L180 10.9L186 8.5L192 8.1L198 9.9L204 13.7L210 19.0L216 25.4L222 32.3L228 38.9L234 44.7L240 49.1 M0 49.1L6 44.7L12 38.9L18 32.3L24 25.4L30 19.0L36 13.7L42 9.9L48 8.1L54 8.5L60 10.9L66 15.3L72 21.1L78 27.7L84 34.6L90 41.0L96 46.3L102 50.1L108 51.9L114 51.5L120 49.1L126 44.7L132 38.9L138 32.3L144 25.4L150 19.0L156 13.7L162 9.9L168 8.1L174 8.5L180 10.9L186 15.3L192 21.1L198 27.7L204 34.6L210 41.0L216 46.3L222 50.1L228 51.9L234 51.5L240 49.1 M0 30.0L6 23.2L12 17.1L18 12.2L24 9.1L30 8.0L36 9.1L42 12.2L48 17.1L54 23.2L60 30.0L66 36.8L72 42.9L78 47.8L84 50.9L90 52.0L96 50.9L102 47.8L108 42.9L114 36.8L120 30.0L126 23.2L132 17.1L138 12.2L144 9.1L150 8.0L156 9.1L162 12.2L168 17.1L174 23.2L180 30.0L186 36.8L192 42.9L198 47.8L204 50.9L210 52.0L216 50.9L222 47.8L228 42.9L234 36.8L240 30.0 M0 10.9L6 8.5L12 8.1L18 9.9L24 13.7L30 19.0L36 25.4L42 32.3L48 38.9L54 44.7L60 49.1L66 51.5L72 51.9L78 50.1L84 46.3L90 41.0L96 34.6L102 27.7L108 21.1L114 15.3L120 10.9L126 8.5L132 8.1L138 9.9L144 13.7L150 19.0L156 25.4L162 32.3L168 38.9L174 44.7L180 49.1L186 51.5L192 51.9L198 50.1L204 46.3L210 41.0L216 34.6L222 27.7L228 21.1L234 15.3L240 10.9 M0 10.9L6 15.3L12 21.1L18 27.7L24 34.6L30 41.0L36 46.3L42 50.1L48 51.9L54 51.5L60 49.1L66 44.7L72 38.9L78 32.3L84 25.4L90 19.0L96 13.7L102 9.9L108 8.1L114 8.5L120 10.9L126 15.3L132 21.1L138 27.7L144 34.6L150 41.0L156 46.3L162 50.1L168 51.9L174 51.5L180 49.1L186 44.7L192 38.9L198 32.3L204 25.4L210 19.0L216 13.7L222 9.9L228 8.1L234 8.5L240 10.9'/%3E%3C/g%3E%3C/svg%3E"), radial-gradient(120% 100% at 100% 0%, #000 0%, transparent 52%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+.stage-dock .stage-card { max-width: none; }
+.stage-card header { padding-bottom: 0.875rem; border-bottom: 1px solid var(--plate-line); }
+.stage-plate { z-index: 1; display: flex; flex-direction: column; gap: 0.5rem; border-radius: 1.5rem; padding: 0.9375rem; }
+.stage-rule { display: block; height: 3px; flex: none; border-block: 1px solid var(--plate-line); opacity: 0.8; }
+.stage-caption { font-size: 0.8125rem; line-height: 1.25rem; font-weight: 500; color: var(--color-text-secondary); }
+
+.stage-machine { display: flex; flex-direction: column; gap: 7.5rem; }
+.stage-dock { position: relative; z-index: 1; display: flex; }
+
+.stage-rail-list { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.125rem; }
+.stage-row {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  padding: 0.4375rem;
+  cursor: pointer;
+  outline: none;
+  color: var(--color-text-secondary);
+  transition: background-color 140ms ease, box-shadow 140ms ease, color 140ms ease;
+}
+.stage-row:hover:not(:disabled) { background: var(--stage-recess); color: var(--color-text-primary); }
+.stage-row:active:not(:disabled) { background: var(--stage-edge); }
+.stage-row[aria-pressed="true"] { background: var(--stage-recess); color: var(--color-text-primary); box-shadow: inset 0 0 0 1px var(--stage-edge); }
+.stage-row:focus-visible { box-shadow: 0 0 0 2px var(--color-border-focus-ring); }
+.stage-row:disabled { cursor: default; }
+.stage-row:disabled:not([aria-pressed="true"]) { opacity: 0.5; }
+.stage-row-symbol { display: none; flex: none; font-size: 0.875rem; line-height: 1.25rem; font-weight: 600; }
+.stage-row-note { display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; line-height: 1.125rem; font-weight: 400; color: var(--color-text-secondary); }
+.stage-row-check { display: none; }
+
+/* ----- Channels --------------------------------------------------------------
+ * Grooves cut into the stage: a lit lower lip, a dark wall, a recessed floor. The
+ * guilloche lives in the plates and ground; the channels are plain engineering.
+ * Everything here is constant width, and pulses only ever travel inside the floor.
+ * --------------------------------------------------------------------------- */
+.flow-channels { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.flow-lane { --w: 5px; --ink: var(--ink-light, var(--stage-flow)); fill: none; stroke-linejoin: round; }
+.dark .flow-lane { --ink: var(--ink-dark, var(--stage-flow)); }
+.flow-lane.is-output { --w: 7px; }
+.flow-lane path { fill: none; stroke-linecap: butt; }
+.flow-edge { stroke: var(--groove-edge); stroke-width: calc(var(--w) + 1px); transform: translateY(1px); }
+.flow-wall { stroke: var(--groove-wall); stroke-width: calc(var(--w) + 1px); }
+.flow-floor { stroke: color-mix(in srgb, var(--ink) var(--groove-tint), var(--groove-floor)); stroke-width: var(--w); transition: stroke 240ms ease; }
+.flow-lit { stroke: var(--ink); stroke-width: calc(var(--w) - 1.5px); stroke-linecap: round !important; opacity: 0; transition: opacity 280ms ease; }
+.flow-lane.is-active .flow-lit, .flow-lane.is-focus .flow-lit { opacity: 0.92; }
+.flow-channels.has-focus .flow-lane.is-active:not(.is-focus) .flow-lit { opacity: 0.4; }
+
+/* A comet that stays inside the floor. Four dashes share one head, so the tail fades in steps
+ * too fine to see. pathLength="1" makes these lengths fractions of the channel. */
+.flow-pulse { --l: 0.05px; --o: 1; stroke: var(--ink); stroke-width: calc(var(--w) - 2px); stroke-linecap: round !important; stroke-dasharray: var(--l) 3px; stroke-dashoffset: var(--l); opacity: 0; }
+.flow-tail-3 { --l: 0.15px; --o: 0.16; }
+.flow-tail-2 { --l: 0.1px; --o: 0.26; }
+.flow-tail-1 { --l: 0.055px; --o: 0.5; }
+.flow-head { --l: 0.012px; stroke: color-mix(in srgb, var(--ink) var(--pulse-head), white); }
+
+/* Payment: the chosen channel fills as the money travels, and the output takes over at the card. */
+.flow-channels:not([data-state="idle"]) .flow-lane:not(.is-active):not(.is-output) .flow-floor { stroke: var(--groove-floor); }
+.flow-channels[data-state="done"] .is-output .flow-lit,
+.flow-channels[data-state="settle"] .is-output .flow-lit { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-pulse { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .flow-channels { animation: stage-object 800ms ease-out 500ms both; }
+  .flow-pulse { animation: flow-travel 5.6s cubic-bezier(0.45, 0, 0.55, 1) var(--delay) infinite; }
+  .flow-channels.is-paused .flow-pulse { animation-play-state: paused; }
+  .flow-channels:not([data-state="idle"]) .flow-lane:not(.is-active):not(.is-output) .flow-pulse { animation: none; opacity: 0; }
+  .flow-channels[data-state="route"] .is-active .flow-lit { stroke-dasharray: 1 1; opacity: 1; animation: flow-fill var(--route-ms) ease-in-out both; }
+  .flow-channels[data-state="settle"] .is-output .flow-lit { stroke-dasharray: 1 1; animation: flow-fill var(--settle-ms) ease-in-out both; }
+}
+@keyframes flow-travel {
+  0% { stroke-dashoffset: var(--l); opacity: 0; }
+  4%, 60% { opacity: var(--o); }
+  66%, 100% { stroke-dashoffset: calc(var(--l) - 1.2px); opacity: 0; }
+}
+@keyframes flow-fill {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* Sockets. A machined ring round a recessed well, with the channel's colour lit inside. */
+.stage-socket {
+  position: relative;
+  display: block;
+  flex: none;
+  width: var(--socket);
+  height: var(--socket);
+  border-radius: 999px;
+  color: var(--ink-light, var(--stage-flow));
+  background: var(--socket-metal);
+  box-shadow: 0 0 0 0.5px var(--stage-edge), 0 1px 2px rgb(0 0 0 / 0.22);
+  transition: box-shadow 200ms ease;
+}
+.dark .stage-socket { color: var(--ink-dark, var(--stage-flow)); }
+.stage-socket::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 999px;
+  background: radial-gradient(circle, color-mix(in srgb, currentColor 34%, transparent) 0%, transparent 66%), var(--socket-well);
+  box-shadow: inset 0 1px 1.5px rgb(0 0 0 / 0.75);
+}
+.stage-socket.is-active::before { background: radial-gradient(circle, currentColor 0%, transparent 70%), var(--socket-well); }
+.stage-socket.is-active { box-shadow: 0 0 0 0.5px var(--stage-edge), 0 0 0 3px color-mix(in srgb, currentColor 24%, transparent), 0 1px 2px rgb(0 0 0 / 0.22); }
+.stage-socket.is-main { width: var(--socket-main); height: var(--socket-main); box-shadow: 0 0 0 0.5px var(--stage-edge), 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent), 0 1px 2px rgb(0 0 0 / 0.22); }
+
+.stage-pin { position: absolute; bottom: calc(-0.9375rem - 1px - var(--socket) / 2); left: 50%; margin-left: calc(var(--socket) / -2); }
+
+/* The terminal strip the sockets sit in, and the lit seam the channels dock against. */
+.stage-port {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 50%;
+  display: flex;
+  height: calc(var(--socket) + 0.5rem);
+  transform: translate(-50%, -50%);
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--dock-pitch) - var(--socket));
+  border-radius: 999px;
+  padding-inline: 0.25rem;
+  background: var(--stage-recess);
+  box-shadow: 0 0 0 1px var(--plate-line), inset 0 1px 2px rgb(0 0 0 / 0.16), 0 1px 0 var(--stage-sheen);
+}
+.stage-port.is-output { height: calc(var(--socket-main) + 0.5rem); width: calc(var(--socket-main) + 0.5rem); padding: 0; }
+.stage-dock > .stage-port.is-output { top: 100%; }
+.stage-dock::before, .stage-dock::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 999px;
+}
+
+.stage-amount { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+.stage-amount-mark { position: relative; flex: none; display: flex; }
+.stage-amount-value { display: flex; min-width: 0; flex-direction: column; font-size: 1.625rem; line-height: 1.875rem; font-weight: 580; letter-spacing: -0.024em; color: var(--color-text-primary); }
+.stage-amount-value .stage-row-note { display: block; margin: 0; letter-spacing: 0; }
+
+.stage-seal {
+  position: absolute;
+  inset: -0.5rem;
+  color: var(--color-text-accent);
+  opacity: 0;
+  transform: scale(0.5) rotate(-30deg);
+  pointer-events: none;
+}
+.stage-sink.is-settled .stage-seal { opacity: 1; transform: none; transition: opacity 300ms, transform 1100ms cubic-bezier(0.16, 1, 0.3, 1); }
+
+.stage-settle-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.125rem; }
+
+/* ----- Actions ------------------------------------------------------------ */
+.stage-foot { display: flex; order: -1; flex-direction: column; align-items: center; gap: 1rem; }
+.stage-head { order: -2; }
+.stage-actions { display: flex; width: 100%; flex-direction: column; align-items: center; gap: 0.875rem; }
+.stage-cta { height: 3rem; padding-inline: 0.75rem; border-radius: 0.875rem; flex: 1 1 0; }
+.stage-actions > div { width: 100%; max-width: 30rem; flex-wrap: nowrap; }
+.stage-trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem 1.5rem; }
+.stage-trust li + li { position: relative; }
+.stage-link {
+  display: none;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 0.5rem;
+  outline: none;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  transition: color 140ms ease;
+}
+.stage-link:hover { color: var(--color-text-primary); }
+.stage-link:focus-visible { box-shadow: 0 0 0 2px var(--color-border-focus-ring); }
+.stage-pause {
+  display: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 999px;
+  outline: none;
+  color: var(--color-text-tertiary);
+  box-shadow: inset 0 0 0 1px var(--stage-edge);
+  transition: color 140ms ease;
+}
+.stage-rail > .stage-pause { position: absolute; top: 0.75rem; inset-inline-end: 0.75rem; display: inline-flex; width: 1.5rem; height: 1.5rem; }
+.stage-pause:hover { color: var(--color-text-primary); }
+.stage-pause:focus-visible { box-shadow: 0 0 0 2px var(--color-border-focus-ring); }
+
+/* ----- Desktop: the axis layout ------------------------------------------- */
+@media (min-width: 640px) {
+  :root { --gutter: 2rem; }
+  .stage-machine { max-width: 30rem; width: 100%; margin-inline: auto; }
+}
+
+@media (min-width: 1100px) {
+  :root { --gutter: clamp(2rem, 3vw, 5rem); }
+  .stage-foot, .stage-head { order: 0; }
+  .stage-cta { padding-inline: 1.25rem; flex: none; }
+  .stage-actions > div { width: auto; }
+  /* The flow axis. The rail's rows sit below its caption, caption 20px + rule 3px + two 8px gaps = 39px,
+   * so every port drops by half that and the fan is symmetric about one line. */
+  :root { --dock-pitch: 1.5rem; --flow-axis: 19.5px; }
+  .stage-frame { justify-content: center; gap: clamp(1.25rem, 3.4vh, 2.5rem); padding-top: clamp(4.75rem, 9.5vh, 6.5rem); padding-bottom: clamp(1rem, 2.6vh, 2rem); }
+
+  .stage-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "in out" "lede-in lede-out";
+    gap: 1rem 2rem;
+    align-items: start;
+    text-align: start;
+  }
+  .stage-head-in { grid-area: in; }
+  .stage-head-out { grid-area: out; text-align: end; }
+  .stage-lede-in { grid-area: lede-in; margin: 0; }
+  .stage-lede-out { grid-area: lede-out; margin: 0; justify-self: end; text-align: end; }
+  .stage-powered { position: absolute; bottom: 0.1rem; left: 50%; transform: translateX(-50%); white-space: nowrap; }
+  .stage-rise.stage-powered { animation-name: stage-rise-axis; }
+
+  .stage-machine {
+    display: grid;
+    max-width: none;
+    grid-template-columns: var(--plate) minmax(0, 1fr) var(--card) minmax(0, 1fr) var(--plate);
+    grid-template-areas: "rail . dock . sink";
+    gap: 0;
+    align-items: stretch;
+  }
+  .stage-rail { grid-area: rail; }
+  .stage-dock { grid-area: dock; }
+  .stage-sink { grid-area: sink; }
+
+  .stage-rail-list { flex: 1; grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); gap: 0; }
+  .stage-row { justify-content: flex-start; padding: 0.25rem 0.5rem 0.25rem 0.375rem; }
+  .stage-row-symbol { display: inline; }
+  .stage-row-note { display: inline; margin-inline-start: auto; }
+  .stage-row-check { display: flex; margin-inline-start: auto; color: var(--color-text-accent); }
+
+  .stage-pin { top: 50%; right: calc(-0.9375rem - 1px - var(--socket) / 2); bottom: auto; left: auto; margin: calc(var(--socket) / -2) 0 0; }
+  .stage-port { top: calc(50% + var(--flow-axis)); left: 0; flex-direction: column; width: calc(var(--socket) + 0.5rem); height: auto; padding: 0.25rem 0; }
+  .stage-dock > .stage-port.is-output, .stage-sink > .stage-port.is-output { top: calc(50% + var(--flow-axis)); left: auto; right: 0; width: calc(var(--socket-main) + 0.5rem); height: calc(var(--socket-main) + 0.5rem); padding: 0; transform: translate(50%, -50%); }
+  .stage-sink > .stage-port.is-output { right: auto; left: 0; transform: translate(-50%, -50%); }
+  .stage-dock::before, .stage-dock::after { top: calc(50% + var(--flow-axis)); width: 1px; height: 13rem; transform: translateY(-50%); }
+  .stage-dock::before { left: 0; background: linear-gradient(180deg, transparent, #f0820f 16%, #e5ac13 30%, #12b374 44%, #0a9a8c 54%, #1e95e6 66%, #5468e8 78%, #8a3ff0 88%, transparent); }
+  .stage-dock::after { right: 0; background: linear-gradient(180deg, transparent, var(--stage-flow) 30%, var(--stage-flow) 70%, transparent); }
+  .stage-sink { justify-content: space-between; }
+  .stage-settle-list { grid-template-columns: minmax(0, 1fr); }
+  .stage-settle-list .stage-row { height: 2.25rem; }
+  .stage-amount { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+
+  .stage-rail > .stage-pause { display: none; }
+  .stage-foot > .stage-pause, .stage-link { display: inline-flex; }
+  .stage-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; }
+  .stage-link { justify-self: start; }
+  .stage-pause { justify-self: end; }
+}
+
+/* Short laptops: the hero keeps everything above the fold by giving up decoration first. */
+@media (min-width: 1100px) and (max-height: 820px) {
+  .hero-display { font-size: min(6.1vw, 8.8vh); }
+  .stage-frame { padding-top: 4.25rem; padding-bottom: 0.75rem; gap: 1rem; }
+  .stage-lede { font-size: 0.9375rem; line-height: 1.375rem; }
+  .stage-dock .stage-card footer { display: none; }
+  .stage-dock .stage-card { gap: 1rem; padding-block: 1rem; }
+  .stage-rail, .stage-sink { padding-block: 0.625rem; }
+  .stage-actions { gap: 0.5rem; }
+  .stage-cta { height: 2.75rem; }
+}
+
+/* ----- Products: a switcher beside one stage ----------------------------------- */
+.products { position: relative; background: var(--stage-ground); padding-block: clamp(2.5rem, 6vh, 4rem); }
+.products::before { content: ""; position: absolute; inset-inline: 0; top: 0; height: 3px; border-block: 1px solid var(--plate-line); }
+.products-frame { width: 100%; max-width: 110rem; margin-inline: auto; padding-inline: var(--gutter); }
+.products-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+.products-side { display: flex; min-width: 0; flex-direction: column; gap: 1rem; }
+.products-tabs { display: flex; flex-direction: column; gap: 0.25rem; }
+.products-tab {
+  display: flex;
+  gap: 0.75rem;
+  border-radius: 0.875rem;
+  padding: 0.75rem 0.875rem;
+  cursor: pointer;
+  outline: none;
+  text-align: start;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+.products-tab:hover { background: var(--stage-recess); }
+.products-tab[data-selected] { background: var(--stage-surface); box-shadow: 0 0 0 1px var(--plate-line), inset 0 1px 0 var(--stage-sheen); }
+.products-tab.is-focus { box-shadow: 0 0 0 2px var(--color-border-focus-ring); }
+.products-tab-icon { width: 1.25rem; height: 1.25rem; flex: none; margin-top: 0.0625rem; color: var(--color-foreground-icon-secondary); }
+.products-tab[data-selected] .products-tab-icon { color: var(--color-text-accent); }
+.products-tab-body { display: none; }
+.products-tab[data-selected] .products-tab-body { display: block; }
+
+.products-stage { min-width: 0; padding: 0.75rem; border-radius: 1.5rem; }
+.products-view { display: flex; min-height: 100%; flex-direction: column; gap: 0.625rem; }
+.products-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.25rem 0.375rem 0.125rem 0.625rem; }
+.products-cta { height: 2.25rem; padding-inline: 0.75rem; border-radius: 0.625rem; }
+
+.link-view { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr); gap: 0.625rem; }
+.link-invoice, .link-share, .browser {
+  position: relative;
+  border-radius: 0.875rem;
+  background: var(--stage-recess);
+  box-shadow: inset 0 0 0 1px var(--plate-line);
+}
+.link-invoice { display: flex; min-width: 0; flex-direction: column; justify-content: center; gap: 0.25rem; padding: 1rem 1.125rem; }
+.link-invoice .stage-rule { margin-block: 0.25rem 0.375rem; }
+.link-amount { margin-block: 0.25rem; font-size: 2.5rem; line-height: 1; font-weight: 600; letter-spacing: -0.035em; }
+.link-share { display: flex; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem; }
+.link-qr { position: relative; flex: none; border-radius: 0.75rem; padding: 0.5rem; background: var(--stage-paper); color: var(--stage-paper-ink); box-shadow: 0 0 0 1px var(--plate-line); }
+.link-qr svg { display: block; width: 6.5rem; height: 6.5rem; }
+.link-url { display: block; overflow: hidden; border-radius: 0.25rem; outline: none; text-align: center; font-size: 0.875rem; line-height: 1.25rem; font-weight: 550; color: var(--color-text-primary); text-overflow: ellipsis; white-space: nowrap; }
+.link-url:hover { text-decoration: underline; }
+.link-url:focus-visible, .link-action:focus-visible { box-shadow: 0 0 0 2px var(--color-border-focus-ring); }
+.link-action { display: inline-flex; height: 2.25rem; min-width: 0; align-items: center; justify-content: center; gap: 0.375rem; border-radius: 0.625rem; padding-inline: 0.5rem; cursor: pointer; outline: none; white-space: nowrap; font-size: 0.875rem; font-weight: 500; color: var(--color-text-primary); box-shadow: inset 0 0 0 1px var(--plate-line); transition: background-color 140ms ease; }
+.link-action:hover { background: var(--stage-surface); }
+.link-action.is-primary { background: var(--color-accent-500); color: var(--color-text-on-accent); box-shadow: none; }
+.link-action.is-primary:hover { background: var(--color-accent-400); }
+
+.browser { flex: 1; overflow: hidden; }
+.browser-bar { display: flex; height: 1.75rem; align-items: center; justify-content: center; box-shadow: inset 0 -1px 0 var(--plate-line); }
+.browser-lock { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; line-height: 1rem; color: var(--color-text-secondary); }
+.browser-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; padding: 0.625rem; }
+.browser-product { display: flex; min-width: 0; flex-direction: column; gap: 0.5rem; }
+.browser-print { display: block; flex: 1; min-height: 6.5rem; max-height: 8.5rem; border-radius: 0.625rem; padding: 0.375rem; color: color-mix(in srgb, var(--print) 72%, var(--color-text-primary)); background: var(--stage-surface); box-shadow: inset 0 0 0 1px var(--plate-line); transition: color 200ms ease; }
+.browser-print svg { margin-inline: auto; width: auto; aspect-ratio: 1; }
+.browser-widget { padding: 0.875rem; gap: 0.75rem; border-color: var(--plate-line); background: var(--stage-surface); box-shadow: none; }
+.browser-widget header { gap: 0.5rem; }
+.browser-widget header > span { width: 1.75rem; height: 1.75rem; }
+.browser-widget > div > div { gap: 0.75rem; }
+.browser-widget > div > div > p:first-child { font-size: 2rem; }
+.browser-widget dl { gap: 0.25rem; }
+.widget-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem; }
+.widget-swatch { display: flex; width: 1.625rem; height: 1.625rem; align-items: center; justify-content: center; border-radius: 999px; cursor: pointer; outline: none; transition: box-shadow 140ms ease; }
+.widget-swatch span { width: 1rem; height: 1rem; border-radius: 999px; }
+.widget-swatch:hover { box-shadow: inset 0 0 0 1px var(--plate-line); }
+.widget-swatch.is-selected { box-shadow: inset 0 0 0 1.5px var(--color-text-primary); }
+.widget-swatch.is-focus, .widget-radius.is-focus { outline: 2px solid var(--color-border-focus-ring); outline-offset: 1px; }
+.widget-radius { border-radius: 0.5rem; padding: 0.125rem 0.5rem; cursor: pointer; outline: none; font-size: 0.75rem; line-height: 1.25rem; font-weight: 500; color: var(--color-text-secondary); transition: background-color 140ms ease, color 140ms ease; }
+.widget-radius:hover { color: var(--color-text-primary); }
+.widget-radius.is-selected { background: var(--stage-surface); color: var(--color-text-primary); box-shadow: inset 0 0 0 1px var(--plate-line); }
+
+.site-foot { background: var(--stage-ground); padding-block: 1.25rem; box-shadow: inset 0 1px 0 var(--stage-edge); }
+.site-foot-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+
+@media (min-width: 640px) {
+  .link-view { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .browser-page { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr); }
+}
+@media (min-width: 1100px) {
+  .products-layout { grid-template-columns: minmax(0, 24rem) minmax(0, 1fr); gap: clamp(2rem, 5vw, 5.5rem); align-items: center; }
+  .products-frame { max-width: 75rem; }
+  .products-stage { height: 24.5rem; padding: 0.875rem; }
+  .products-view { height: 100%; }
+  .browser { display: flex; flex-direction: column; }
+  .browser-page { flex: 1; align-items: stretch; }
+}
+
+/* ----- Load sequence and state ---------------------------------------------- */
+@keyframes stage-rise {
+  from { opacity: 0; transform: translateY(0.3em); filter: blur(5px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes stage-rise-axis {
+  from { opacity: 0; transform: translate(-50%, 0.4em); filter: blur(5px); }
+  to { opacity: 1; transform: translate(-50%, 0); filter: none; }
+}
+/* Opacity only: FlowChannels measures these objects, and a transform would throw its paths off the nodes. */
+@keyframes stage-object {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes seal-in {
+  from { opacity: 0; transform: scale(0.6) rotate(-24deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes checkout-state {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .stage-rise { animation: stage-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) var(--in, 0ms) both; }
+  .stage-machine > * { animation: stage-object 700ms ease-out 120ms both; }
+  .stage-rise-late { animation: stage-rise 800ms cubic-bezier(0.16, 1, 0.3, 1) 1250ms both; }
+}
