@@ -12,6 +12,7 @@ import { Rosette } from "@/components/brand/rosette";
 import { TokenMark } from "@/components/brand/token-mark";
 import { addressError, isValidAddress } from "@/lib/address";
 import { api, ApiError, errorMessage } from "@/lib/api";
+import { sendGuard, type SendRecord } from "@/lib/send-guard";
 import { ASSETS } from "@/lib/assets";
 import { formatUsd, shortAddress } from "@/lib/format";
 import type { AssetSymbol, PaymentsMode, WidgetRadius, WidgetSuccess, WidgetTheme } from "@/lib/types";
@@ -329,7 +330,15 @@ function Deposit({ session, source, onStartOver }: { session: Session; source: P
   const countdown = useCountdown(session.payBy);
   // From the server, so a reload or another device can't offer a second send.
   const [sentHere, setSent] = useState(false);
-  const sent = sentHere || session.depositSubmitted;
+  // From this browser too, because the server only hears after the wallet answers.
+  const guard = sendGuard(session.id);
+  const [record, setRecord] = useState<SendRecord>(() => guard.read());
+  const sent = sentHere || session.depositSubmitted || record.state === "sent";
+  const maybeSent = !sent && record.state === "pending";
+  const unreported = !session.depositSubmitted && record.state === "sent" ? record.txHash : null;
+  useEffect(() => {
+    if (unreported) void api(`/api/checkout/sessions/${session.id}/deposit`, { body: { txHash: unreported } }).catch(() => undefined);
+  }, [unreported, session.id]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmRestart, setConfirmRestart] = useState(false);
@@ -341,7 +350,12 @@ function Deposit({ session, source, onStartOver }: { session: Session; source: P
     setError(null);
     try {
       const from = await connectWallet();
-      const txHash = await sendDeposit({ asset, to: session.depositAddress, amountBase: session.payBase, from });
+      guard.begin();
+      const txHash = await sendDeposit({ asset, to: session.depositAddress, amountBase: session.payBase, from }).catch((failure: unknown) => {
+        guard.clear();
+        throw failure;
+      });
+      guard.done(txHash);
       // One send per address: the button stays off from here, so a second tap can't pay twice.
       setSent(true);
       await api(`/api/checkout/sessions/${session.id}/deposit`, { body: { txHash } }).catch(() => undefined);
@@ -398,6 +412,11 @@ function Deposit({ session, source, onStartOver }: { session: Session; source: P
       {error && <p role="alert" className="text-body-regular text-text-error-primary">{error}</p>}
       {sent ? (
         <p role="status" className="flex items-center gap-2 text-body-medium"><Spinner size="sm" className="text-text-accent" />Waiting to see your payment</p>
+      ) : maybeSent ? (
+        <div className="flex flex-col gap-2" role="alert">
+          <p className="text-body-regular">You may have already sent this from this browser. Check your wallet&apos;s activity before sending again. If you did send it, this page updates by itself.</p>
+          <Button variant="secondary" className="h-11 w-full rounded-xl" onClick={() => { guard.clear(); setRecord({ state: "none" }); }}>I checked, nothing was sent</Button>
+        </div>
       ) : (
         <>
           {asset.evm && hasWallet() && <Button className="h-11 w-full rounded-xl" disabled={sending} onClick={() => void payFromWallet()}>{sending ? "Check your wallet" : `Pay from wallet on ${asset.chain}`}</Button>}
@@ -477,15 +496,17 @@ function Receipt({ session, source }: { session: Session; source: PublicSource }
 
 function Stopped({ session, source, onStartOver }: { session: Session; source: PublicSource; onStartOver: () => void }) {
   const returned = session.state === "provider_refunded";
+  // The merchant holds what arrived, so this one isn't a reason to pay again.
+  const short = session.state === "underpaid";
   const [confirm, setConfirm] = useState(false);
   return (
     <div className="flex flex-col gap-3" role="alert">
       <p className="flex items-start gap-2 text-body-medium"><RiErrorWarningLine className="mt-0.5 size-5 shrink-0 text-status-rose-text" aria-hidden />{returned ? "This payment was returned to your wallet" : session.state === "underpaid" ? "This payment arrived short" : "This payment didn't complete"}</p>
       <p className="text-body-regular text-text-secondary [overflow-wrap:anywhere]">
-        {returned ? `${session.returned ?? "Your deposit"} ${session.payAsset} went back to ${session.refundAddress}, less network fees. ${source.merchant} wasn't paid.` : session.state === "underpaid" ? `The route delivered less than it quoted, and ${source.merchant} has been told. Please contact ${source.supportEmail || "the merchant"} with the reference below.` : `We're confirming where your funds are. If you sent them, they're being returned to ${session.refundAddress}. Please contact ${source.supportEmail || "the merchant"} with the reference below if they don't arrive.`}
+        {returned ? `${session.returned ?? "Your deposit"} ${session.payAsset} went back to ${session.refundAddress}, less network fees. ${source.merchant} wasn't paid.` : session.state === "underpaid" ? `Your payment reached ${source.merchant}, but the route delivered less than it quoted. They've been told. Please don't pay again, and contact ${source.supportEmail || "the merchant"} with the reference below.` : `We're confirming where your funds are. If you sent them, they're being returned to ${session.refundAddress}. Please contact ${source.supportEmail || "the merchant"} with the reference below if they don't arrive.`}
       </p>
       <p dir="ltr" className="text-caption-1-medium text-text-secondary">{session.id}</p>
-      {returned || confirm ? (
+      {short ? null : returned || confirm ? (
         <>
           {!returned && <p className="text-body-regular">This payment could still complete. If it does, paying again means paying twice.</p>}
           <Button className="h-11 w-full rounded-xl" onClick={onStartOver}>{returned ? "Start a new payment" : "I understand, start a new payment"}</Button>

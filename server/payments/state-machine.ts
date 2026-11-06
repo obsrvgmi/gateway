@@ -132,12 +132,22 @@ export function webhookEventFor(state: PaymentState): string | null {
       return "payment.expired";
     case "failed":
     case "provider_refunded":
-    case "underpaid":
       return "payment.failed";
+    // Not a failure: the merchant holds what arrived, and a server must not treat this as a lost sale.
+    case "underpaid":
+      return "payment.underpaid";
     default:
       return null;
   }
 }
+
+/** FAILED isn't REFUNDED: a move may yet go through, so it stays reserved and watched this long after failing. */
+export const WATCH_FAILED_MS = 86_400_000;
+/** A signed intent can't execute past its deadline, but the status can lag behind one that landed just before it. */
+export const RELEASE_GRACE_MS = 5 * 60_000;
+
+/** The next look at a failed move, or null once it's settled. REFUNDED is final: the funds are confirmed back. */
+export const nextFailedPoll = (status: ProviderStatus, failedAt: Date, now: Date) => (status !== "REFUNDED" && now.getTime() - failedAt.getTime() < WATCH_FAILED_MS ? new Date(now.getTime() + 300_000) : null);
 
 /** Payouts and refunds follow the same provider statuses, with these outcomes. */
 export type IntentState = "awaiting_signature" | "submitting" | "processing" | "done" | "failed" | "expired";

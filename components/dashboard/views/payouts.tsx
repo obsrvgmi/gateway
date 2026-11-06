@@ -17,7 +17,7 @@ import { TokenMark } from "@/components/brand/token-mark";
 import { NavButton } from "@/components/nav-button";
 import { formatToken, formatUsd, shortAddress } from "@/lib/format";
 import { metricsNow } from "@/lib/metrics";
-import { failedPayouts, formatPayoutDate, HOLD_OPTIONS, isWalletAddress, ledger, nextPayoutAt, nextPayoutEstimate } from "@/lib/payouts";
+import { failedPayouts, formatPayoutDate, HOLD_OPTIONS, isWalletAddress, ledger, nextPayoutAt, nextPayoutEstimate, payoutFailureText } from "@/lib/payouts";
 import { api, errorMessage } from "@/lib/api";
 import { actions, newId, useGateway } from "@/lib/store";
 import { signChallenge } from "@/lib/sign-intent";
@@ -60,7 +60,7 @@ function PayoutDrawer({ payoutId, onClose, onRetry }: { payoutId: string | null;
           <DrawerHeader title={formatUsd(payout.usd)} description={`${payout.trigger === "scheduled" ? "Scheduled" : "Manual"} payout to ${payout.destinationLabel}`} />
           <DrawerBody>
             <div className="flex flex-col gap-4 pb-4">
-              {payout.failureReason && <p className="rounded-xl bg-status-rose-background p-3 text-body-regular text-status-rose-text">{payout.failureReason}</p>}
+              {payout.failureReason && <p className="rounded-xl bg-status-rose-background p-3 text-body-regular text-status-rose-text">{payoutFailureText(payout)}</p>}
               <dl className="flex flex-col gap-3">
                 <Detail label="Status"><PayoutStatusChip status={payout.status} /></Detail>
                 <Detail label="Left your balance">{formatToken(payout.amount, payout.asset)}</Detail>
@@ -77,7 +77,7 @@ function PayoutDrawer({ payoutId, onClose, onRetry }: { payoutId: string | null;
           </DrawerBody>
           <DrawerFooter>
             <CopyButton text={payout.reference} label="Reference">Copy reference</CopyButton>
-            {payout.status === "failed" && <Button leadingIcon={RiRefreshLine} onClick={onRetry}>Try again</Button>}
+            {payout.status === "failed" && !payout.watching && <Button leadingIcon={RiRefreshLine} onClick={onRetry}>Try again</Button>}
           </DrawerFooter>
         </>
       )}
@@ -193,10 +193,10 @@ export function PayoutsView() {
           <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-status-rose-background text-status-rose-text"><RiErrorWarningLine className="size-5" aria-hidden /></span>
           <div className="flex min-w-[200px] flex-1 flex-col">
             <p className="text-body-medium">{formatToken(payout.amount, payout.asset)} to {payout.destinationLabel} failed on {formatRowDate(payout.createdAt)}</p>
-            <p className="text-caption-1-regular text-text-secondary">{payout.failureReason}</p>
+            <p className="text-caption-1-regular text-text-secondary">{payoutFailureText(payout)}</p>
           </div>
           <Button variant="ghost" size="small" onClick={() => setOpenId(payout.id)}>Details</Button>
-          <Button variant="secondary" size="small" leadingIcon={RiRefreshLine} onClick={() => setPaying(true)}>Try again</Button>
+          {!payout.watching && <Button variant="secondary" size="small" leadingIcon={RiRefreshLine} onClick={() => setPaying(true)}>Try again</Button>}
         </div>
       ))}
 

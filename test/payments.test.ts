@@ -77,6 +77,13 @@ describe("sim mode by default", () => {
       set({ APP_URL: "https://pay.example.com" });
       expect(paymentsMode()).toBe("live");
       expect(liveRefused()).toBe(false);
+      // A test build's browser trusts a key the server offers, so it can't take real money.
+      set({ NEXT_PUBLIC_TEST_BUILD: "true" });
+      expect(paymentsMode()).toBe("sim");
+      expect(liveRefused()).toBe(true);
+      delete process.env.NEXT_PUBLIC_TEST_BUILD;
+      resetEnv();
+      expect(paymentsMode()).toBe("live");
       set({ APP_FEE_BPS: "30" });
       expect(paymentsMode()).toBe("sim");
       expect(liveRefused()).toBe(true);
@@ -327,8 +334,9 @@ describe("lifecycle against the simulator", () => {
     expect(logged.map((entry) => entry.action)).toContain("payment.short_settlement");
     const types = (await db().select().from(schema.outbox).where(eq(schema.outbox.orgId, orgId))).map((event) => event.type);
     expect(types).not.toContain("payment.settled");
-    expect(types).toContain("payment.failed");
-    expect(types).toContain("alert.short_settlement");
+    // The merchant holds what arrived, so this isn't a failure and its notice mustn't say the funds went back.
+    expect(types).not.toContain("payment.failed");
+    expect(types).toContain("payment.underpaid");
   });
 
   it("flags a deposit that changes after a final outcome, without moving money records", async () => {
@@ -547,7 +555,7 @@ describe("refunds", () => {
     const row = await submitRefund({ orgId, refundId: prepared.id, signature: await merchant.signMessage({ message: prepared.payload }), userId });
     expect(row?.state).toBe("processing");
     expect((await paymentById(paymentId)).state).toBe("refund_pending");
-    await applyRefundStatus(prepared.id, status("SUCCESS"));
+    await applyRefundStatus(prepared.id, status("SUCCESS", { amountOut: "1000000000000000000000" }));
     const payment = await paymentById(paymentId);
     expect(payment.state).toBe("refunded");
     expect(payment.refundedAt).not.toBeNull();
@@ -562,7 +570,7 @@ describe("refunds", () => {
     const first = await prepareRefund({ orgId, paymentId, amountBase: "30000000", userId });
     if (first.kind !== "intent") throw new Error("expected an intent refund");
     await submitRefund({ orgId, refundId: first.id, signature: await merchant.signMessage({ message: first.payload }), userId });
-    await applyRefundStatus(first.id, status("SUCCESS"));
+    await applyRefundStatus(first.id, status("SUCCESS", { amountOut: "1000000000000000000000" }));
     const partly = await paymentById(paymentId);
     expect(partly.state).toBe("settled");
     expect(partly.refundedBase).toBe("30000000");
@@ -608,7 +616,7 @@ describe("refunds", () => {
     expect((await paymentById(paymentId)).state).toBe("settled");
     await applyRefundStatus(prepared.id, status("PROCESSING"));
     expect((await paymentById(paymentId)).state).toBe("refund_pending");
-    await applyRefundStatus(prepared.id, status("SUCCESS"));
+    await applyRefundStatus(prepared.id, status("SUCCESS", { amountOut: "1000000000000000000000" }));
     expect((await paymentById(paymentId)).state).toBe("refunded");
   });
 
@@ -618,8 +626,8 @@ describe("refunds", () => {
     const prepared = await prepareRefund({ orgId, paymentId, amountBase: "10000000", userId });
     if (prepared.kind !== "intent") throw new Error("expected an intent refund");
     await submitRefund({ orgId, refundId: prepared.id, signature: await merchant.signMessage({ message: prepared.payload }), userId });
-    await applyRefundStatus(prepared.id, status("SUCCESS"));
-    await applyRefundStatus(prepared.id, status("SUCCESS"));
+    await applyRefundStatus(prepared.id, status("SUCCESS", { amountOut: "1000000000000000000000" }));
+    await applyRefundStatus(prepared.id, status("SUCCESS", { amountOut: "1000000000000000000000" }));
     expect((await paymentById(paymentId)).refundedBase).toBe("10000000");
   });
 });

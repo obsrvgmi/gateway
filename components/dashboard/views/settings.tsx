@@ -26,7 +26,7 @@ import { AssetSelect } from "../asset-select";
 import { Bento, CopyButton, EmptyState, MAIN_ULTRA, ModeTag, PageHeader, Panel, useMainAtLeast } from "../ui";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const EVENTS: WebhookEvent[] = ["payment.processing", "payment.settled", "payment.refunded", "payment.expired", "payment.failed", "payout.sent", "payout.failed", "link.created"];
+const EVENTS: WebhookEvent[] = ["payment.processing", "payment.settled", "payment.refunded", "payment.expired", "payment.failed", "payment.underpaid", "payout.sent", "payout.failed", "link.created"];
 const ROLES: [TeamRole, string][] = [["admin", "Admin"], ["finance", "Finance"], ["viewer", "Viewer"]];
 const ROLE_LABEL: Record<TeamRole, string> = { owner: "Owner", admin: "Admin", finance: "Finance", viewer: "Viewer" };
 const ALERTS: [keyof NotificationPrefs, string, string][] = [

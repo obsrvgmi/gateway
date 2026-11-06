@@ -42,6 +42,8 @@ node dist/scripts/ops.mjs screen remove 0xabc...
 | `deposit changed after a final outcome` | A second deposit may have reached a used address. The merchant gets a notification. | Find the funds with NEAR. Records don't change automatically. |
 | `status polling keeps failing` | The provider is failing for one address. Money in flight is never dropped, only retried less often. | Check NEAR's status and your API key. |
 | `provider reported success with no amount` | NEAR said SUCCESS without saying what arrived, so the payment isn't marked settled. | Ask NEAR with the payment's `correlationId`. |
+| `two refunds funded for one payment` | A refund the merchant had replaced got funded as well. The merchant was told. | The customer may be paid twice. Ask the merchant, and NEAR if needed. |
+| `payout delivered below its minimum`, `refund delivered below its minimum` | It went, but less arrived than the signed quote's minimum. The merchant was told. | Contact NEAR with the deposit address. |
 | `payments stuck in flight` | Money has been moving for over 6 hours. | Ask NEAR. Docs say a held transaction can be unavailable "for a period or indefinitely". |
 | `balance read failed` | NEAR RPC is down. Dashboards show balances as unavailable, and payouts are refused. | Consider a paid RPC via `NEAR_RPC_URL`. |
 

@@ -267,8 +267,72 @@ describe("a direct-mode refund nobody funded", () => {
     const first = await prepareRefund({ orgId, paymentId, amountBase: "20000000", userId });
     await db().update(schema.refunds).set({ state: "abandoned" }).where(eq(schema.refunds.id, first.id));
     await applyRefundStatus(first.id, status("PROCESSING"));
-    await applyRefundStatus(first.id, status("SUCCESS"));
+    await applyRefundStatus(first.id, status("SUCCESS", { amountOut: "1000000000000000000000" }));
     expect((await paymentById(paymentId)).refundedBase).toBe("20000000");
+  });
+
+  describe("a replaced address that gets funded after all", () => {
+    async function replaced() {
+      const fixture = await settledDirect();
+      const first = await prepareRefund({ ...fixture, amountBase: "20000000" });
+      await db().update(schema.refunds).set({ createdAt: new Date(Date.now() - 3_600_000) }).where(eq(schema.refunds.id, first.id));
+      const second = await prepareRefund({ ...fixture, amountBase: "10000000" });
+      expect(second.id).not.toBe(first.id);
+      return { ...fixture, first, second };
+    }
+
+    it("closes the replacement, so only one can reach the customer", async () => {
+      const { orgId, userId, paymentId, first, second } = await replaced();
+      const moved = await applyRefundStatus(first.id, status("PROCESSING"));
+      expect(moved?.state).toBe("processing");
+      expect((await refundById(second.id)).state).toBe("abandoned");
+      expect((await paymentById(paymentId)).state).toBe("refund_pending");
+      await expect(prepareRefund({ orgId, paymentId, amountBase: "10000000", userId })).rejects.toMatchObject({ code: "not_refundable" });
+    });
+
+    it("stops the replacement being offered as soon as the merchant says they sent it", async () => {
+      const { orgId, userId, paymentId, first, second } = await replaced();
+      await recordRefundDeposit({ orgId, refundId: first.id, txHash: "0xlate" });
+      expect((await refundById(second.id)).state).toBe("abandoned");
+      await expect(prepareRefund({ orgId, paymentId, amountBase: "10000000", userId })).rejects.toMatchObject({ code: "refund_open" });
+    });
+
+    it("tells someone once when both went, and counts both", async () => {
+      const { orgId, paymentId, first, second } = await replaced();
+      await recordRefundDeposit({ orgId, refundId: second.id, txHash: "0xsecond" });
+      await applyRefundStatus(second.id, status("PROCESSING"));
+      expect((await applyRefundStatus(first.id, status("PROCESSING")))?.state).toBe("abandoned");
+      await applyRefundStatus(first.id, status("PROCESSING"));
+      const twice = (await db().select().from(schema.outbox).where(eq(schema.outbox.orgId, orgId))).filter((event) => event.type === "alert.refund_twice");
+      expect(twice).toHaveLength(1);
+      await applyRefundStatus(first.id, status("SUCCESS", { amountOut: "1000000000000000000000" }));
+      // The other is still moving, so a new refund can't start.
+      expect((await paymentById(paymentId)).state).toBe("refund_pending");
+      await applyRefundStatus(second.id, status("SUCCESS", { amountOut: "1000000000000000000000" }));
+      const payment = await paymentById(paymentId);
+      expect(payment.refundedBase).toBe("30000000");
+      expect(payment.state).toBe("settled");
+    });
+
+    it("doesn't put the payment back to settled while the other one is still moving", async () => {
+      const { orgId, paymentId, first, second } = await replaced();
+      await recordRefundDeposit({ orgId, refundId: second.id, txHash: "0xsecond" });
+      await applyRefundStatus(second.id, status("PROCESSING"));
+      await applyRefundStatus(first.id, status("PROCESSING"));
+      await applyRefundStatus(first.id, status("FAILED"));
+      expect((await paymentById(paymentId)).state).toBe("refund_pending");
+    });
+  });
+
+  it("tells the merchant when a deposit they reported never arrives", async () => {
+    const { orgId, userId, paymentId } = await settledDirect();
+    const refund = await prepareRefund({ orgId, paymentId, userId });
+    await recordRefundDeposit({ orgId, refundId: refund.id, txHash: "0xlost" });
+    const stored = await refundById(refund.id);
+    const later = new Date(Date.parse((stored.quote as QuoteResponse).quote.deadline as string) + 8 * 86_400_000);
+    expect((await applyRefundStatus(refund.id, status("PENDING_DEPOSIT"), later))?.state).toBe("expired");
+    const types = (await db().select().from(schema.outbox).where(eq(schema.outbox.orgId, orgId))).map((event) => event.type);
+    expect(types).toContain("alert.refund_failed");
   });
 
   it("doesn't offer an address close to its deadline again, where funds may be lost", async () => {

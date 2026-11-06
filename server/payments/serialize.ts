@@ -70,6 +70,7 @@ export function toPayout(row: PayoutRow): Payout {
     createdAt: row.createdAt.toISOString(),
     completedAt: row.completedAt?.toISOString() ?? null,
     ...(row.failureReason ? { failureReason: row.failureReason } : {}),
+    ...(row.state === "failed" && row.nextPollAt ? { watching: true } : {}),
   };
 }
 

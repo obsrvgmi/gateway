@@ -11,6 +11,13 @@ import { base58 } from "@scure/base";
 export const ONE_CLICK_QUOTE_KEY = "ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc";
 export const VERIFIER_CONTRACT = "intents.near";
 
+/** The most slippage we ever ask for on a move out of a balance. A hostile quote can't widen it. */
+export const MAX_SLIPPAGE_BPS = 100;
+/** The sign window is 10 minutes, so a quote much older isn't the one this request made. */
+const MAX_INTENT_QUOTE_AGE_MS = 30 * 60_000;
+/** Provider deadlines run about 3 days. A signature good for far longer isn't one to give out. */
+const MAX_SIGNED_LIFE_MS = 7 * 86_400_000;
+
 export interface SignedQuote {
   quote: Record<string, unknown>;
   quoteRequest: Record<string, unknown>;
@@ -105,9 +112,14 @@ export interface ExpectedQuote {
  * go. Only a live quote's does. And a valid signature only says the provider issued this quote, so every
  * field must still match what the merchant chose. Returns the reason it was refused, or null.
  */
-function checkQuoteFields(response: SignedQuote, expected: ExpectedQuote): string | null {
+function checkQuoteFields(response: SignedQuote, expected: ExpectedQuote, now: number): string | null {
   const request = response.quoteRequest;
   if (request.dry !== false) return "This isn't a live quote.";
+  const deadline = Date.parse(String(response.quote.deadline));
+  if (!Number.isFinite(deadline) || deadline <= now) return "This quote has expired.";
+  if (typeof request.slippageTolerance !== "number" || request.slippageTolerance > MAX_SLIPPAGE_BPS) return "This quote allows more slippage than was asked for.";
+  // Signed fields we never set, and can't say what they'd do.
+  if (request.customRecipientMsg || request.virtualChainRecipient || request.virtualChainRefundRecipient) return "This quote carries instructions nobody asked for.";
   if (typeof response.quote.depositAddress !== "string" || !response.quote.depositAddress) return "This quote has no routing address.";
   if (request.recipient !== expected.recipient) return "This quote pays a different address than the one shown.";
   if (request.recipientType !== "DESTINATION_CHAIN") return "This quote doesn't pay out to the chain shown.";
@@ -119,15 +131,17 @@ function checkQuoteFields(response: SignedQuote, expected: ExpectedQuote): strin
 }
 
 /** A move out of an Intents balance, signed as an intent. */
-export function checkIntentQuote(response: SignedQuote, expected: ExpectedQuote): string | null {
+export function checkIntentQuote(response: SignedQuote, expected: ExpectedQuote, now = Date.now()): string | null {
   if (response.quoteRequest.depositType !== "INTENTS" || response.quoteRequest.refundType !== "INTENTS") return "This quote doesn't draw on your balance.";
-  return checkQuoteFields(response, expected);
+  // An old quote for the same move is still validly signed, but its address has already been used.
+  if (!(now - Date.parse(response.timestamp) <= MAX_INTENT_QUOTE_AGE_MS)) return "This quote is too old to sign. Start again for a fresh price.";
+  return checkQuoteFields(response, expected, now);
 }
 
 /** A refund the merchant sends from their wallet to a deposit address. */
-export function checkRouteQuote(response: SignedQuote, expected: ExpectedQuote): string | null {
+export function checkRouteQuote(response: SignedQuote, expected: ExpectedQuote, now = Date.now()): string | null {
   if (response.quoteRequest.depositType !== "ORIGIN_CHAIN" || response.quoteRequest.refundType !== "ORIGIN_CHAIN") return "This quote isn't a deposit from your wallet.";
-  return checkQuoteFields(response, expected);
+  return checkQuoteFields(response, expected, now);
 }
 
 export type ChallengeAction = "settlement" | "destination";
@@ -180,6 +194,7 @@ export function checkTransferPayload(payload: string, expected: ExpectedTransfer
   if (typeof parsed.signer_id !== "string" || parsed.signer_id.toLowerCase() !== expected.signer.toLowerCase()) return "The payload names the wrong signer.";
   const deadline = Date.parse(parsed.deadline);
   if (!Number.isFinite(deadline) || deadline <= now) return "The payload has already expired.";
+  if (deadline > now + MAX_SIGNED_LIFE_MS) return "The payload stays valid for too long.";
   if (!Array.isArray(parsed.intents) || parsed.intents.length !== 1) return "The payload must contain exactly one action.";
   const [intent] = parsed.intents;
   if (intent.intent !== "transfer") return `The payload asks for "${String(intent.intent)}", not a transfer.`;

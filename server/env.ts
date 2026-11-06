@@ -66,6 +66,8 @@ export function liveGateFailures(config: Env = env()): string[] {
   if (config.APP_FEE_BPS > 0 && !config.APP_FEE_RECIPIENT) failures.push("APP_FEE_BPS is set without APP_FEE_RECIPIENT");
   if (!config.TRUST_PROXY) failures.push("TRUST_PROXY is off, so per-address rate limits can't run");
   if (!config.APP_URL.startsWith("https://")) failures.push("APP_URL must be https");
+  // Next fixes this at build time, so it reports what was built. A test build's browser trusts a key the server offers.
+  if (process.env.NEXT_PUBLIC_TEST_BUILD === "true") failures.push("This is a test build. Rebuild without NEXT_PUBLIC_TEST_BUILD");
   return failures;
 }
 

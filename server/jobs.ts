@@ -38,8 +38,14 @@ function describe(event: OutboxRow): { kind: string; title: string; body?: strin
       return { kind: "payout", title: "Payout sent", href: "/dashboard/payouts" };
     case "payout.failed":
       return { kind: "payout", title: "A payout failed", body: String(data.reason ?? ""), href: "/dashboard/payouts", always: true };
-    case "alert.short_settlement":
-      return { kind: "alert", title: "A payment arrived short", body: "The route delivered less than it quoted. Contact support with this payment's id.", href: paymentHref(data.id), always: true };
+    case "payment.underpaid":
+      return { kind: "alert", title: "A payment arrived short", body: "The route delivered less than it quoted, and you hold what arrived. Contact support with this payment's id.", href: paymentHref(data.id), always: true };
+    case "alert.refund_failed":
+      return { kind: "alert", title: "A refund didn't complete", body: `${String(data.reason ?? "")} The customer may still be waiting.`, href: paymentHref(data.id), always: true };
+    case "alert.refund_twice":
+      return { kind: "alert", title: "Two refunds were sent for one payment", body: "A refund you'd replaced was funded as well, so the customer may be paid twice. Contact support with this payment's id.", href: paymentHref(data.id), always: true };
+    case "alert.payout_short":
+      return { kind: "alert", title: "A payout arrived short", body: "The route delivered less than its quoted minimum. Contact support with this payout's id.", href: "/dashboard/payouts", always: true };
     case "alert.previous_wallet":
       return { kind: "alert", title: "A payment landed in your previous wallet", body: `It's under ${String(data.wallet)}, which you still control. It was paid before your wallet changed.`, href: paymentHref(data.id), always: true };
     case "alert.wallet_changed":

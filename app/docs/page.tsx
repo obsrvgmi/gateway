@@ -63,7 +63,7 @@ function verify(rawBody, header, secret) {
   const given = Buffer.from(v1, "hex");
   return given.length === expected.length && timingSafeEqual(given, expected);
 }`}</Code>
-      <p>Events: <code>payment.processing</code>, <code>payment.settled</code>, <code>payment.refunded</code>, <code>payment.expired</code>, <code>payment.failed</code>, <code>payout.sent</code>, <code>payout.failed</code>, <code>link.created</code>, and a <code>ping</code> from the test button.</p>
+      <p>Events: <code>payment.processing</code>, <code>payment.settled</code>, <code>payment.refunded</code>, <code>payment.expired</code>, <code>payment.failed</code>, <code>payment.underpaid</code> (less arrived than quoted, and you hold what did), <code>payout.sent</code>, <code>payout.failed</code>, <code>link.created</code>, and a <code>ping</code> from the test button.</p>
       <p>Amounts in <code>amount_base</code> are integer strings in the asset&apos;s smallest unit. Read them as big integers, not floats. Check <code>live</code>, so test-mode events can&apos;t fulfil real orders. <code>payment.expired</code> isn&apos;t final: if money arrives late, <code>payment.settled</code> can still follow.</p>
 
       <H id="test-mode">Test mode</H>

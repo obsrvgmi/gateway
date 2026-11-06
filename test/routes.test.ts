@@ -355,6 +355,10 @@ describe("team changes", () => {
   it("can't change your own role", async () => {
     const admin = await signedIn("admin");
     expect((await call(patchMember as Handler, { method: "PATCH", token: admin.token, body: { role: "finance" }, params: { id: admin.userId } })).status).toBe(403);
+    // Finance is refused for another reason too, so this is the one only this rule stops.
+    expect((await call(patchMember as Handler, { method: "PATCH", token: admin.token, body: { role: "viewer" }, params: { id: admin.userId } })).status).toBe(403);
+    const [row] = await db().select({ role: schema.memberships.role }).from(schema.memberships).where(eq(schema.memberships.userId, admin.userId));
+    expect(row.role).toBe("admin");
   });
 
   it("only an owner can grant finance", async () => {
@@ -548,6 +552,16 @@ describe("live mode closes the test-only routes", () => {
   it("has no 'simulate a payment' route, even for a payment that exists", async () => {
     const id = await paymentRow(false);
     goLive();
+    try {
+      expect((await call(simPay as Handler, { params: { id }, origin: "https://gateway.example", body: { scenario: "pay" } })).status).toBe(404);
+    } finally {
+      goSim();
+    }
+  });
+
+  it("has no simulate route when refused, which an operator believes is live", async () => {
+    const id = await paymentRow(false);
+    goRefused();
     try {
       expect((await call(simPay as Handler, { params: { id }, origin: "https://gateway.example", body: { scenario: "pay" } })).status).toBe(404);
     } finally {

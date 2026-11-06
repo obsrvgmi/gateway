@@ -50,7 +50,7 @@ function Timeline({ steps }: { steps: TimelineStep[] }) {
 
 /** Takes an id, not a payment, so the drawer follows the store while a payment settles under it. */
 export function PaymentDrawer({ paymentId, onClose }: { paymentId: string | null; onClose: () => void }) {
-  const { payments } = useGateway();
+  const { payments, mode } = useGateway();
   const [refunding, setRefunding] = useState(false);
   const payment = paymentId ? payments.find((item) => item.id === paymentId) : undefined;
 
@@ -88,7 +88,7 @@ export function PaymentDrawer({ paymentId, onClose }: { paymentId: string | null
             </DrawerBody>
             <DrawerFooter>
               <CopyButton text={payment.id} label="Payment ID">Copy ID</CopyButton>
-              {payment.status === "settled" && payment.detail?.state === "settled" && <Button variant="secondary" leadingIcon={RiArrowGoBackLine} onClick={() => setRefunding(true)}>Refund</Button>}
+              {payment.status === "settled" && payment.detail?.state === "settled" && Boolean(payment.simulated) === (mode !== "live") && <Button variant="secondary" leadingIcon={RiArrowGoBackLine} onClick={() => setRefunding(true)}>Refund</Button>}
             </DrawerFooter>
           </>
         )}

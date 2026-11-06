@@ -37,7 +37,7 @@ const strict = (input: PreparedTransfer, expected = EXPECTED) => signTransfer(in
 beforeEach(() => {
   vi.mocked(wallet.connectWallet).mockReset().mockResolvedValue(SIGNER);
   vi.mocked(wallet.signMessage).mockReset().mockResolvedValue("0xsigned");
-  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-11-07T00:00:00Z") });
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-11-06T16:35:00Z") });
 });
 
 const refused = async (attempt: Promise<unknown>, reason?: RegExp) => {
@@ -144,6 +144,41 @@ describe("before a wallet is ever asked to sign", () => {
   });
 });
 
+describe("what else a live quote can try", () => {
+  const NOW = Date.parse("2026-11-06T16:35:00Z");
+  const expected = { owner: SIGNER, recipient: RECIPIENT, originAssetId: USDC, destinationAssetId: USDC, amount: "50000000" };
+  const quote = (change: (response: SignedQuote) => void = () => undefined) => {
+    const response = structuredClone(payout) as unknown as SignedQuote;
+    change(response);
+    return response;
+  };
+
+  it("passes when nothing's off", () => {
+    expect(checkIntentQuote(quote(), expected, NOW)).toBeNull();
+  });
+
+  it.each<[string, (response: SignedQuote) => void, RegExp]>([
+    ["wider slippage", (r) => { r.quoteRequest.slippageTolerance = 5000; }, /slippage/],
+    ["no slippage stated", (r) => { delete r.quoteRequest.slippageTolerance; }, /slippage/],
+    ["a message for the recipient", (r) => { r.quoteRequest.customRecipientMsg = "x"; }, /instructions/],
+    ["a virtual chain recipient", (r) => { r.quoteRequest.virtualChainRecipient = "x"; }, /instructions/],
+    ["a virtual chain refund recipient", (r) => { r.quoteRequest.virtualChainRefundRecipient = "x"; }, /instructions/],
+    ["a deadline that's passed", (r) => { r.quote.deadline = "2026-11-06T16:00:00.000Z"; }, /expired/],
+    ["no deadline", (r) => { delete r.quote.deadline; }, /expired/],
+    // Validly signed, but from an earlier move, so its address may be spent.
+    ["an old quote for the same move", (r) => { r.timestamp = "2026-11-06T15:00:00.000Z"; }, /too old/],
+    ["no timestamp", (r) => { r.timestamp = ""; }, /too old/],
+  ])("refuses %s", (_, change, reason) => {
+    expect(checkIntentQuote(quote(change), expected, NOW)).toMatch(reason);
+  });
+
+  it("refuses a signature that would stay usable for far too long", async () => {
+    const parsed = JSON.parse(generated.intent.payload);
+    parsed.deadline = "2027-01-01T00:00:00.000Z";
+    await refused(strict(prepared({ payload: JSON.stringify(parsed) })), /too long/);
+  });
+});
+
 describe("a direct-mode refund's address", () => {
   const route = () => structuredClone(live) as unknown as SignedQuote;
   const ETH = "nep141:eth.omft.near";
@@ -152,6 +187,16 @@ describe("a direct-mode refund's address", () => {
     // A real live quote, but an EXACT_OUTPUT into Intents: not what a route refund looks like.
     expect(() => verifiedRouteAddress({ quote: route(), quoteKey: ONE_CLICK_QUOTE_KEY }, EXPECTED, false)).toThrow();
     expect(checkRouteQuote(route(), { owner: RECIPIENT, recipient: ACCOUNT_LOWER, originAssetId: ETH, destinationAssetId: USDC, amount: "50000000" })).toMatch(/chain shown/);
+  });
+
+  it("is refused when a failed route would return the funds to anyone but the wallet sending them", () => {
+    const quote = structuredClone(live) as unknown as SignedQuote;
+    Object.assign(quote.quoteRequest, { recipientType: "DESTINATION_CHAIN", depositType: "ORIGIN_CHAIN", refundType: "ORIGIN_CHAIN", swapType: "EXACT_INPUT" });
+    const request = quote.quoteRequest;
+    const expected = { owner: String(request.refundTo), recipient: String(request.recipient), originAssetId: String(request.originAsset), destinationAssetId: String(request.destinationAsset), amount: String(request.amount) };
+    const NOW = Date.parse("2026-11-06T16:35:00Z");
+    expect(checkRouteQuote(quote, expected, NOW)).toBeNull();
+    expect(checkRouteQuote(quote, { ...expected, owner: "0x0000000000000000000000000000000000000001" }, NOW)).toMatch(/someone else/);
   });
 
   it("is refused on a broken signature", () => {

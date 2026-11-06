@@ -1,4 +1,10 @@
 /** Browser calls to our own API. A failed call throws, with the server's message safe to show. */
+/**
+ * The server looked at the request and said no. Anything else, a lost response or a server error, leaves
+ * the outcome unknown, and for money that means "it may have gone", never "it didn't".
+ */
+export const isRefusal = (error: unknown) => error instanceof ApiError && error.status >= 400 && error.status < 500;
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,

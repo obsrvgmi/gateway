@@ -27,6 +27,8 @@ The app runs in test mode until every step here is done. Nothing in this runbook
 
 Set these on both the web and worker processes, then deploy with `PAYMENTS_MODE=sim` first.
 
+**Build the production image with `NEXT_PUBLIC_TEST_BUILD` unset.** Its browser code then trusts only NEAR's signing key. Checkout works in test mode on that image, but a simulated payout or refund is refused by the browser, which is correct. To try those on a staging environment, build a separate image with `--build-arg NEXT_PUBLIC_TEST_BUILD=true`. Live mode refuses to run on a test build.
+
 ```bash
 DATABASE_URL=...
 APP_URL=https://your-domain

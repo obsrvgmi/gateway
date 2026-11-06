@@ -111,7 +111,9 @@ Each guard gets a test, and each is mutation-checked: delete the guard and a tes
 | Screening | Refund, merchant and destination wallets are checked against the sanctions list. A hit refuses with a neutral message and writes an audit entry. |
 | Availability | Payout or refund above `available` is refused, in `BigInt`. |
 | Signer | Payout signature must recover to the merchant wallet. |
-| Single submit | `submit` is compare-and-set on status, and a late response can't move a row back. An unknown outcome stays reserved and resends the same signed intent, because its nonce is single-use. A refused resend proves nothing, since a duplicate of a send that landed gets refused too. It's released only at the signed deadline. FAILED isn't REFUNDED, so a failure stays reserved and watched for a day. |
+| Single submit | `submit` is compare-and-set on status, and a late response can't move a row back. An unknown outcome stays reserved and resends the same signed intent, because its nonce is single-use. A refused resend proves nothing, since a duplicate of a send that landed gets refused too. Past the signed deadline plus 5 minutes, judged by when the status was read, it counts as failed. FAILED isn't REFUNDED, so any failure stays reserved and watched for a day from when it failed, and the dashboard doesn't offer a retry until then. |
+| Replaced refunds | A route refund's address can't be cancelled. If a replaced one is funded after all, its unfunded replacement closes. If both were funded, both are tracked and a person is told. |
+| Modes | Rows made in one mode can't be refunded or signed in the other, because test rows stay after go-live. |
 | Idempotency | Session creation and API writes are keyed; a repeat returns the first result. |
 | Live gates | See below. |
 
@@ -174,7 +176,11 @@ See `docs/runbooks/going-live.md` for the full list and the questions for NEAR.
 - A compromised Gateway server could point new customer payments at its own address, because a customer's browser has no merchant-signed record to check against. Non-custodial means Gateway never holds funds, not that the operator is trusted for nothing. Direct-to-wallet doesn't change this.
 - A deposit that arrives after a wallet change lands in the old wallet, which the merchant still controls.
 - A second deposit to a used address is undocumented by NEAR. We watch for one for a month and alert. There's no per-chain indexer of our own.
-- `/embed` allows any site to frame it, so a widget's `site` field is informational. Payments still go to the merchant.
+- `/embed` can only be framed by the widget's `site` when one is set. Without one, any site can frame it. Payments still go to the merchant either way.
+- The browser's quote checks prove the provider issued this quote, and that it matches what the merchant chose on screen. They don't prove the destination list the server sent is the merchant's own, which is why the dialog shows the full address and destinations are signed by the wallet. Nothing helps if the server can change the script it serves.
+- A refund of a payment that settled before a wallet change has to be signed by the old wallet, because that's where the funds are.
+- A send the provider refuses outright is treated as nothing sent. Only a compromised server could hold that signature and try later, and no state here would stop that.
+- A payment that arrives short is `underpaid`. The merchant is told, and it can't be refunded from the dashboard, because what to return is a decision for a person with NEAR's answer.
 - Merchant metrics stay client-side, capped at the newest 10,000 payments.
 - Balance mode exposes merchants to NEAR Intents risk (pause, exploit, compliance hold). Direct mode is the mitigation.
 - The hold is advisory on-chain.

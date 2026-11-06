@@ -12,9 +12,9 @@ import { emit } from "../outbox";
 import { computeAvailable, heldAmounts, inFlightAmounts, readBalances } from "./availability";
 import { assertNotScreened, assertRoutesOpen } from "./guards";
 import { intentForClient, prepareIntent, verifySignature, type PreparedIntent } from "./intent-flow";
-import { provider } from "./provider";
+import { isLive, provider } from "./provider";
 import { ProviderRejected, ProviderUnavailable, type StatusResponse } from "./provider/types";
-import { nextIntentState, nextPollDelayMs, type IntentState } from "./state-machine";
+import { nextFailedPoll, nextIntentState, nextPollDelayMs, RELEASE_GRACE_MS, type IntentState } from "./state-machine";
 
 type PayoutRow = typeof schema.payouts.$inferSelect;
 type Org = typeof schema.organizations.$inferSelect;
@@ -136,8 +136,10 @@ export async function submitPayout(input: { orgId: string; payoutId: string; sig
   const [row] = await db().select().from(schema.payouts).where(and(eq(schema.payouts.id, input.payoutId), eq(schema.payouts.orgId, input.orgId))).limit(1);
   if (!row) throw notFound();
   if (row.state !== "awaiting_signature") return row;
+  if (row.live !== isLive()) throw conflict("This payout was started in a different mode. Start it again.", "payout_expired");
   if (!row.signExpiresAt || row.signExpiresAt.getTime() < Date.now()) {
-    await db().update(schema.payouts).set({ state: "expired", updatedAt: new Date() }).where(eq(schema.payouts.id, row.id));
+    // Only from here: a duplicate request mustn't overwrite one that's already sending.
+    await db().update(schema.payouts).set({ state: "expired", updatedAt: new Date() }).where(and(eq(schema.payouts.id, row.id), eq(schema.payouts.state, "awaiting_signature")));
     throw conflict("This payout expired before it was signed. Start it again for a fresh price.", "payout_expired");
   }
   const payload = payloadOf(row);
@@ -177,7 +179,7 @@ export async function submitPayout(input: { orgId: string; payoutId: string; sig
   } catch (error) {
     if (error instanceof ProviderRejected) {
       // The first send, refused outright, so nothing can have gone. A refused resend proves nothing: see `resendIfStuck`.
-      const [updated] = await db().update(schema.payouts).set({ state: "failed", failureReason: error.message, nextPollAt: null, updatedAt: new Date() }).where(and(eq(schema.payouts.id, row.id), eq(schema.payouts.state, "submitting"))).returning();
+      const [updated] = await db().update(schema.payouts).set({ state: "failed", failureReason: error.message, failedAt: new Date(), nextPollAt: null, updatedAt: new Date() }).where(and(eq(schema.payouts.id, row.id), eq(schema.payouts.state, "submitting"))).returning();
       if (updated) await emit(db(), row.orgId, "payout.failed", { id: row.id, reason: error.message });
       const [current] = await db().select().from(schema.payouts).where(eq(schema.payouts.id, row.id)).limit(1);
       return current;
@@ -190,41 +192,54 @@ export async function submitPayout(input: { orgId: string; payoutId: string; sig
 }
 
 const toIntentState = (state: string): IntentState => (state === "sent" ? "done" : (state as IntentState));
-const WATCH_FAILED_MS = 86_400_000;
 
+/** `now` is when the status was read, not when this runs. See `pollDuePayouts`. */
 export async function applyPayoutStatus(payoutId: string, status: StatusResponse, now = new Date()) {
   return db().transaction(async (tx) => {
     const [row] = await tx.select().from(schema.payouts).where(eq(schema.payouts.id, payoutId)).for("update").limit(1);
     if (!row) return null;
     const current = toIntentState(row.state);
-    const next = nextIntentState(current, status.status);
+    let next = nextIntentState(current, status.status);
+    const { amountOut, destinationChainTxHashes, refundReason } = status.swapDetails;
     const patch: Partial<PayoutRow> = { providerStatus: status.status, pollFailures: 0, updatedAt: now };
-    if (status.swapDetails.destinationChainTxHashes.length) patch.destinationTxHashes = status.swapDetails.destinationChainTxHashes;
-    if (status.swapDetails.amountOut) patch.receiveBase = status.swapDetails.amountOut;
+    if (destinationChainTxHashes.length) patch.destinationTxHashes = destinationChainTxHashes;
+    if (amountOut) patch.receiveBase = amountOut;
 
-    const age = now.getTime() - row.createdAt.getTime();
+    // "Success" with no amount says nothing about what arrived, so it isn't sent yet.
+    if (next === "done" && !amountOut) {
+      log("error", "provider reported success with no amount", { payoutId });
+      next = null;
+    }
     const signedDeadline = row.intent ? Date.parse((JSON.parse(payloadOf(row)) as { deadline: string }).deadline) : Number.NaN;
     if (next === "done") {
       patch.state = "sent";
       patch.completedAt = now;
       patch.nextPollAt = null;
       await emit(tx, row.orgId, "payout.sent", { id: row.id, asset: row.asset, amount_base: row.amountBase, receive_asset: row.receiveAsset, receive_base: patch.receiveBase ?? row.receiveBase, destination: row.destinationAddress, tx_hashes: (patch.destinationTxHashes ?? row.destinationTxHashes).map((tx_) => tx_.hash), live: row.live });
+      // It went, so it's sent. But the merchant was promised at least this much.
+      if (row.minReceiveBase && BigInt(amountOut as string) < BigInt(row.minReceiveBase)) {
+        log("error", "payout delivered below its minimum", { payoutId, minimum: row.minReceiveBase, got: amountOut });
+        await emit(tx, row.orgId, "alert.payout_short", { id: row.id, minimum: row.minReceiveBase, got: amountOut, asset: row.receiveAsset });
+      }
     } else if (next === "failed") {
+      const failedAt = row.failedAt ?? now;
       patch.state = "failed";
-      patch.failureReason = status.swapDetails.refundReason ?? "The route couldn't complete this payout. The funds stayed in your balance.";
-      // FAILED isn't REFUNDED: it may yet go through, so it stays reserved and watched for a day.
-      patch.nextPollAt = status.status === "FAILED" && age < WATCH_FAILED_MS ? new Date(now.getTime() + 300_000) : null;
+      patch.failedAt = failedAt;
+      patch.failureReason = refundReason ?? (status.status === "REFUNDED" ? "The route couldn't complete this payout, and the funds went back to your balance." : "The route couldn't complete this payout.");
+      patch.nextPollAt = nextFailedPoll(status.status, failedAt, now);
       if (current !== "failed") await emit(tx, row.orgId, "payout.failed", { id: row.id, reason: patch.failureReason });
-    } else if ((row.state === "submitting" || row.state === "processing") && status.status === "PENDING_DEPOSIT" && now.getTime() > signedDeadline) {
-      // Past its signed deadline with nothing seen: the verifier can't execute it now, so the funds are free.
+    } else if ((row.state === "submitting" || row.state === "processing") && status.status === "PENDING_DEPOSIT" && now.getTime() > signedDeadline + RELEASE_GRACE_MS) {
+      // Past its signed deadline with nothing seen. It can't execute now, but one that landed just before
+      // could still be on its way to this status, so it's watched like any other failure.
       patch.state = "failed";
-      patch.failureReason = "This payout expired before the route accepted it. The funds stayed in your balance.";
-      patch.nextPollAt = null;
+      patch.failedAt = now;
+      patch.failureReason = "This payout expired before the route accepted it.";
+      patch.nextPollAt = nextFailedPoll(status.status, now, now);
       await emit(tx, row.orgId, "payout.failed", { id: row.id, reason: patch.failureReason });
     } else {
       if (next === "processing") patch.state = "processing";
       if ((next ?? current) === "failed") {
-        patch.nextPollAt = age < WATCH_FAILED_MS ? new Date(now.getTime() + 300_000) : null;
+        patch.nextPollAt = nextFailedPoll(status.status, row.failedAt ?? now, now);
       } else {
         const delay = nextPollDelayMs({ state: "processing", now: now.getTime(), createdAt: row.createdAt.getTime(), deadline: null, failures: 0 });
         patch.nextPollAt = delay === null ? null : new Date(now.getTime() + delay);
@@ -267,9 +282,12 @@ export async function pollDuePayouts(limit = 25) {
   await Promise.all(
     claimed.rows.map(async (row) => {
       try {
+        // When it was read, not when this finishes: a resend can outlast the deadline, and an old "nothing
+        // yet" applied after that must not look like a reading taken past it.
+        const readAt = new Date();
         const status = await provider().status(row.deposit_address, row.deposit_memo);
         await resendIfStuck(row, status);
-        await applyPayoutStatus(row.id, status);
+        await applyPayoutStatus(row.id, status, readAt);
       } catch (error) {
         if (!(error instanceof ProviderUnavailable || error instanceof ProviderRejected)) log("error", "payout poll failed", { payoutId: row.id, error });
         const failures = row.poll_failures + 1;

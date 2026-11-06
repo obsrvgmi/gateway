@@ -53,7 +53,6 @@ export async function applyPaymentStatus(paymentId: string, status: StatusRespon
       // A merchant must never be told they were paid in full when they weren't.
       log("error", "payment settled below the quoted amount", { paymentId, expected: row.receiveBase, got: swapDetails.amountOut });
       await audit(tx, { orgId: row.orgId, actorType: "system", action: "payment.short_settlement", target: paymentId, detail: { expected: row.receiveBase, got: swapDetails.amountOut } });
-      await emit(tx, row.orgId, "alert.short_settlement", { id: row.id, expected: row.receiveBase, got: swapDetails.amountOut, asset: row.receiveAsset });
       next = "underpaid";
       patch.failureReason = "The route delivered less than it quoted. Contact support with this payment's id.";
     }

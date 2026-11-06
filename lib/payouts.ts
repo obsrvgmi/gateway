@@ -128,4 +128,7 @@ export function nextPayoutEstimate(ledgerNow: Ledger, at: number | null) {
 }
 
 export const formatPayoutDate = label;
+/** What to tell a merchant about a failed payout, including whether it's safe to try again. */
+export const payoutFailureText = (payout: Pick<Payout, "failureReason" | "watching">) => `${payout.failureReason ?? "This payout didn't complete."}${payout.watching ? " It could still go through, so its funds stay reserved while we watch it for a day. Please don't send it again yet." : ""}`;
+
 export const failedPayouts = (payouts: Payout[]) => payouts.filter((payout) => payout.status === "failed");

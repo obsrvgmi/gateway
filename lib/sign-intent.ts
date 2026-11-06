@@ -32,6 +32,14 @@ function assertSigned(response: SignedQuote, serverKey: string, allowTestKey: bo
   if (!verifyQuoteSignature(response, allowTestKey ? serverKey : ONE_CLICK_QUOTE_KEY)) throw new WalletError("The route's signature on this quote didn't verify, so it wasn't sent to your wallet.");
 }
 
+/** Run as soon as a quote arrives too, so nothing unchecked is ever shown to the merchant. */
+export function verifyTransferQuote(prepared: { quote: unknown; quoteKey: string }, expected: ExpectedMove, allowTestKey = ALLOW_TEST_KEYS) {
+  const response = prepared.quote as SignedQuote;
+  assertSigned(response, prepared.quoteKey, allowTestKey);
+  const refusal = checkIntentQuote(response, expectedQuote(expected));
+  if (refusal) throw new WalletError(`${refusal} It wasn't sent to your wallet.`);
+}
+
 /**
  * Asks the merchant's wallet to sign, after checking in this browser that the request is exactly what the
  * merchant chose. The wallet only shows a routing address, so the provider's signature on a live quote is
@@ -41,10 +49,8 @@ function assertSigned(response: SignedQuote, serverKey: string, allowTestKey: bo
  * that the merchant approved the recipient, and nothing here helps if the server can change this script.
  */
 export async function signTransfer(prepared: PreparedTransfer, expected: ExpectedMove, allowTestKey = ALLOW_TEST_KEYS): Promise<string> {
+  verifyTransferQuote(prepared, expected, allowTestKey);
   const response = prepared.quote as SignedQuote;
-  assertSigned(response, prepared.quoteKey, allowTestKey);
-  const quoteRefusal = checkIntentQuote(response, expectedQuote(expected));
-  if (quoteRefusal) throw new WalletError(`${quoteRefusal} It wasn't sent to your wallet.`);
   const refusal = checkTransferPayload(prepared.payload, { signer: expected.signer, receiver: response.quote.depositAddress as string, assetId: ASSETS[expected.asset].assetId, amount: expected.amountBase });
   if (refusal) throw new WalletError(`This request failed its checks and wasn't sent to your wallet. ${refusal}`);
 

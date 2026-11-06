@@ -12,11 +12,12 @@ import { Spinner } from "@/components/base/spinner/spinner";
 import { toast } from "@/components/base/toast/toast";
 import { Rosette } from "@/components/brand/rosette";
 import { TokenMark } from "@/components/brand/token-mark";
-import { api, errorMessage } from "@/lib/api";
+import { api, errorMessage, isRefusal } from "@/lib/api";
 import { ASSETS } from "@/lib/assets";
+import { payoutFailureText } from "@/lib/payouts";
 import { formatToken, formatUsd, shortAddress } from "@/lib/format";
 import { baseToDecimal, decimalToBase } from "@/lib/money";
-import { signTransfer, type ExpectedMove, type PreparedTransfer } from "@/lib/sign-intent";
+import { signTransfer, type ExpectedMove, type PreparedTransfer, verifyTransferQuote } from "@/lib/sign-intent";
 import { refresh, useGateway } from "@/lib/store";
 import type { AssetSymbol, Payout } from "@/lib/types";
 import { cx } from "@/utils/cx";
@@ -60,7 +61,7 @@ function Sending({ payoutId, onClose }: { payoutId: string; onClose: () => void 
             </div>
           </div>
         ) : failed ? (
-          <p className="rounded-xl bg-status-rose-background p-3 text-body-regular text-status-rose-text">{payout?.failureReason}</p>
+          <p className="rounded-xl bg-status-rose-background p-3 text-body-regular text-status-rose-text">{payout ? payoutFailureText(payout) : null}</p>
         ) : (
           <div role="status" className="flex items-center gap-3 text-body-medium"><Spinner size="sm" className="text-text-accent" />Routing through NEAR Intents {payout && <PayoutStatusChip status={payout.status} />}</div>
         )}
@@ -77,15 +78,27 @@ function Review({ prepared, expected, label, onBack, onSent, onClose }: { prepar
   const { amountOut, minAmountOut } = (prepared.quote as { quote: { amountOut: string; minAmountOut: string } }).quote;
   const sign = async () => {
     setBusy(true);
+    let signature: string;
     try {
-      const signature = await signTransfer(prepared, expected);
-      await api(`/api/payouts/${prepared.id}/sign`, { body: { signature } });
-      await refresh();
-      onSent(prepared.id);
+      signature = await signTransfer(prepared, expected);
     } catch (error) {
       toast.error("Payout not sent", { description: errorMessage(error) });
       setBusy(false);
+      return;
     }
+    try {
+      await api(`/api/payouts/${prepared.id}/sign`, { body: { signature } });
+    } catch (error) {
+      if (isRefusal(error)) {
+        toast.error("Payout not sent", { description: errorMessage(error) });
+        setBusy(false);
+        return;
+      }
+      // It's signed, and the answer was lost, so it may well be on its way. Starting another could pay twice.
+      toast.error("We couldn't confirm this payout", { description: "It may have gone, so please don't start another. It shows here either way." });
+    }
+    await refresh().catch(() => undefined);
+    onSent(prepared.id);
   };
   return (
     <>
@@ -167,7 +180,10 @@ function Form({ onClose }: { onClose: () => void }) {
     try {
       // Fixed now, before anything comes back from the server.
       setChosen({ label: destination.label, expected: { signer: settlement.wallet, recipient: destination.address, asset, receiveAsset, amountBase } });
-      setPrepared(await api<PreparedPayout>("/api/payouts", { body: { asset, amountBase, receiveAsset, destinationId: destination.id } }));
+      const quoted = await api<PreparedPayout>("/api/payouts", { body: { asset, amountBase, receiveAsset, destinationId: destination.id } });
+      // Before showing a figure from it.
+      verifyTransferQuote(quoted, { signer: settlement.wallet, recipient: destination.address, asset, receiveAsset, amountBase });
+      setPrepared(quoted);
     } catch (error) {
       toast.error("Couldn't prepare this payout", { description: errorMessage(error) });
     } finally {

@@ -114,7 +114,7 @@ export const settingsPatch = z.object({
 
 export const email = z.string().trim().toLowerCase().email("Enter a valid email address.").max(254);
 export const teamRole = z.enum(["admin", "finance", "viewer"]);
-export const webhookEvent = z.enum(["payment.processing", "payment.settled", "payment.refunded", "payment.expired", "payment.failed", "link.created", "payout.sent", "payout.failed"]);
+export const webhookEvent = z.enum(["payment.processing", "payment.settled", "payment.refunded", "payment.expired", "payment.failed", "payment.underpaid", "link.created", "payout.sent", "payout.failed"]);
 
 export const webhookCreate = z.object({
   // Whether it's allowed is decided in one place: `assertWebhookUrl`, again at every delivery.

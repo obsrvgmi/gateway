@@ -1,22 +1,23 @@
 import "server-only";
-import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { ASSETS } from "@/lib/assets";
 import type { AssetSymbol } from "@/lib/types";
 import { audit } from "../audit";
-import { db, schema } from "../db";
+import { db, schema, type Tx } from "../db";
 import { conflict, HttpError, notFound } from "../http/errors";
 import { newId } from "../ids";
 import { log } from "../log";
 import { emit } from "../outbox";
 import { inFlightAmounts, readBalances } from "./availability";
+import { MAX_SLIPPAGE_BPS } from "@/lib/intents";
 import { assertLiveQuoteUsable, assertNotScreened, assertQuoteEcho, assertQuoteSigned, assertRoutesOpen, requestedDeadlineMs } from "./guards";
 import { intentForClient, prepareIntent, verifySignature } from "./intent-flow";
 import { baseToDecimal, sumBase } from "@/lib/money";
 import { assertHasWallet, loadOrg } from "./payouts";
-import { provider } from "./provider";
+import { isLive, provider } from "./provider";
 import { ProviderRejected, ProviderUnavailable, type QuoteRequest, type QuoteResponse, type StatusResponse } from "./provider/types";
 import { paymentEventBody } from "./serialize";
-import { nextIntentState, type IntentState } from "./state-machine";
+import { nextFailedPoll, nextIntentState, RELEASE_GRACE_MS, type IntentState } from "./state-machine";
 
 type RefundRow = typeof schema.refunds.$inferSelect;
 type PaymentRow = typeof schema.payments.$inferSelect;
@@ -26,7 +27,6 @@ const OPEN = ["awaiting_deposit", "submitting", "processing"];
 const ABANDON_AFTER_MS = 30 * 60_000;
 /** An address closer than this to its deadline isn't offered again: funds sent after the deadline may be lost. */
 const MIN_ADDRESS_LIFE_MS = 2 * 3_600_000;
-const WATCH_FAILED_MS = 86_400_000;
 const RESEND_EVERY_MS = 60_000;
 
 const isUniqueViolation = (error: unknown) => {
@@ -35,6 +35,12 @@ const isUniqueViolation = (error: unknown) => {
 };
 const quoteDeadline = (row: RefundRow) => Date.parse((row.quote as QuoteResponse | null)?.quote.deadline ?? "");
 const signedDeadline = (row: { intent: unknown }) => Date.parse((JSON.parse((row.intent as { payload: string }).payload) as { deadline: string }).deadline);
+
+/**
+ * What stops a new refund. Besides one in progress, that's a failure still being watched, and a replaced
+ * refund the merchant funded anyway: both can still reach the customer.
+ */
+const blocksRefund = () => or(inArray(schema.refunds.state, OPEN), and(eq(schema.refunds.state, "failed"), isNotNull(schema.refunds.nextPollAt)), and(eq(schema.refunds.state, "abandoned"), isNotNull(schema.refunds.depositTxHash)));
 
 /** What's left to refund: received, less refunds done, in the asset the merchant received. */
 export const refundableBase = (payment: Pick<PaymentRow, "receivedBase" | "refundedBase">) => BigInt(payment.receivedBase ?? "0") - BigInt(payment.refundedBase);
@@ -50,16 +56,19 @@ export async function prepareRefund(input: { orgId: string; paymentId: string; a
   const [payment] = await db().select().from(schema.payments).where(and(eq(schema.payments.id, input.paymentId), eq(schema.payments.orgId, org.id))).limit(1);
   if (!payment) throw notFound();
   if (payment.state !== "settled") throw conflict("Only a settled payment can be refunded.", "not_refundable");
+  // Rows from test mode stay after go-live, and a real signature must never pay out a payment that never happened.
+  if (payment.live !== isLive()) throw conflict(payment.live ? "This is a real payment, and this server is in test mode." : "This was a test payment, so there's nothing real to refund.", "not_refundable");
 
   const remaining = refundableBase(payment);
   const amount = input.amountBase ? BigInt(input.amountBase) : remaining;
   if (amount <= 0n) throw conflict("This payment has nothing left to refund.", "not_refundable");
   if (amount > remaining) throw conflict("That's more than is left to refund on this payment.", "refund_too_large", { remaining: remaining.toString() });
 
-  const [open] = await db().select().from(schema.refunds).where(and(eq(schema.refunds.paymentId, payment.id), or(inArray(schema.refunds.state, OPEN), and(eq(schema.refunds.state, "failed"), isNotNull(schema.refunds.nextPollAt))))).limit(1);
+  const blocking = await db().select().from(schema.refunds).where(and(eq(schema.refunds.paymentId, payment.id), blocksRefund()));
+  if (blocking.some((row) => row.state === "failed")) throw conflict("The last refund for this payment failed, and could still go through. Try again in a day, or when it's been returned.", "refund_open");
+  if (blocking.some((row) => row.state !== "awaiting_deposit")) throw conflict("A refund for this payment is already under way.", "refund_open");
+  const [open] = blocking;
   if (open) {
-    if (open.state === "failed") throw conflict("The last refund for this payment failed, and could still go through. Try again in a day, or when it's been returned.", "refund_open");
-    if (open.state !== "awaiting_deposit") throw conflict("A refund for this payment is already under way.", "refund_open");
     const sameAmount = open.amountBase === amount.toString();
     // Already sent: show it, and never offer a second send.
     if (open.depositTxHash) {
@@ -100,7 +109,7 @@ export async function prepareRefund(input: { orgId: string; paymentId: string; a
   const request: QuoteRequest = {
     dry: false,
     swapType: "EXACT_INPUT",
-    slippageTolerance: 100,
+    slippageTolerance: MAX_SLIPPAGE_BPS,
     originAsset: ASSETS[asset].assetId,
     depositType: "ORIGIN_CHAIN",
     destinationAsset: ASSETS[payAsset].assetId,
@@ -161,9 +170,19 @@ function routeRefundForClient(row: RefundRow) {
   };
 }
 
+/** A replaced refund got funded after all. That money's going to the customer, so its replacement mustn't be sent as well. */
+const closeUnfundedSiblings = (tx: Tx, row: RefundRow, now: Date) =>
+  tx.update(schema.refunds).set({ state: "abandoned", updatedAt: now }).where(and(eq(schema.refunds.paymentId, row.paymentId), ne(schema.refunds.id, row.id), eq(schema.refunds.state, "awaiting_deposit"), isNull(schema.refunds.depositTxHash)));
+
+const hasOtherOpen = async (tx: Tx, row: RefundRow) => (await tx.select({ id: schema.refunds.id }).from(schema.refunds).where(and(eq(schema.refunds.paymentId, row.paymentId), ne(schema.refunds.id, row.id), inArray(schema.refunds.state, OPEN))).limit(1)).length > 0;
+
 /** Remembers the merchant's transaction, so reopening this refund can't offer a second send. */
 export async function recordRefundDeposit(input: { orgId: string; refundId: string; txHash: string }) {
-  const [row] = await db().update(schema.refunds).set({ depositTxHash: input.txHash, updatedAt: new Date() }).where(and(eq(schema.refunds.id, input.refundId), eq(schema.refunds.orgId, input.orgId), eq(schema.refunds.kind, "route"))).returning();
+  const row = await db().transaction(async (tx) => {
+    const [updated] = await tx.update(schema.refunds).set({ depositTxHash: input.txHash, updatedAt: new Date() }).where(and(eq(schema.refunds.id, input.refundId), eq(schema.refunds.orgId, input.orgId), eq(schema.refunds.kind, "route"))).returning();
+    if (updated?.state === "abandoned") await closeUnfundedSiblings(tx, updated, new Date());
+    return updated;
+  });
   if (!row) throw notFound();
   if (row.depositAddress) await provider().submitDeposit({ txHash: input.txHash, depositAddress: row.depositAddress, depositMemo: row.depositMemo }).catch((error) => log("warn", "refund deposit hint failed", { refundId: row.id, error }));
 }
@@ -176,8 +195,10 @@ export async function submitRefund(input: { orgId: string; refundId: string; sig
   const [row] = await db().select().from(schema.refunds).where(and(eq(schema.refunds.id, input.refundId), eq(schema.refunds.orgId, input.orgId))).limit(1);
   if (!row) throw notFound();
   if (row.kind !== "intent" || row.state !== "awaiting_signature") return row;
+  if (row.live !== isLive()) throw conflict("This refund was started in a different mode. Start it again.", "refund_expired");
   if (!row.signExpiresAt || row.signExpiresAt.getTime() < Date.now()) {
-    await db().update(schema.refunds).set({ state: "expired", updatedAt: new Date() }).where(eq(schema.refunds.id, row.id));
+    // Only from here: a duplicate request mustn't overwrite one that's already sending.
+    await db().update(schema.refunds).set({ state: "expired", updatedAt: new Date() }).where(and(eq(schema.refunds.id, row.id), eq(schema.refunds.state, "awaiting_signature")));
     throw conflict("This refund expired before it was signed. Start it again for a fresh price.", "refund_expired");
   }
   const payload = (row.intent as { payload: string }).payload;
@@ -188,6 +209,9 @@ export async function submitRefund(input: { orgId: string; refundId: string; sig
     const [payment] = await tx.select().from(schema.payments).where(eq(schema.payments.id, row.paymentId)).for("update").limit(1);
     if (!payment || payment.state !== "settled") throw conflict("A refund for this payment is already under way.", "refund_open");
     if (BigInt(row.amountBase) > refundableBase(payment)) throw conflict("That's more than is left to refund on this payment.", "refund_too_large");
+    // Prepared side by side, another of these may have failed and still go through. The payment reads `settled` meanwhile.
+    const [other] = await tx.select({ id: schema.refunds.id }).from(schema.refunds).where(and(eq(schema.refunds.paymentId, payment.id), ne(schema.refunds.id, row.id), blocksRefund())).limit(1);
+    if (other) throw conflict("Another refund for this payment could still go through. Try again in a day, or when it's been returned.", "refund_open");
     const updated = await tx.update(schema.refunds).set({ state: "submitting", signature: encoded, submitAttemptedAt: new Date(), nextPollAt: new Date(Date.now() + 15_000), updatedAt: new Date() }).where(and(eq(schema.refunds.id, row.id), eq(schema.refunds.state, "awaiting_signature"))).returning();
     if (updated.length) {
       await tx.update(schema.payments).set({ state: "refund_pending", updatedAt: new Date() }).where(eq(schema.payments.id, payment.id));
@@ -220,26 +244,54 @@ export async function submitRefund(input: { orgId: string; refundId: string; sig
 
 async function failRefund(refundId: string, reason: string) {
   return db().transaction(async (tx) => {
-    const [row] = await tx.update(schema.refunds).set({ state: "failed", failureReason: reason, nextPollAt: null, updatedAt: new Date() }).where(and(eq(schema.refunds.id, refundId), eq(schema.refunds.state, "submitting"))).returning();
+    const [row] = await tx.update(schema.refunds).set({ state: "failed", failureReason: reason, failedAt: new Date(), nextPollAt: null, updatedAt: new Date() }).where(and(eq(schema.refunds.id, refundId), eq(schema.refunds.state, "submitting"))).returning();
     if (!row) return (await tx.select().from(schema.refunds).where(eq(schema.refunds.id, refundId)).limit(1))[0];
-    await tx.update(schema.payments).set({ state: "settled", updatedAt: new Date() }).where(and(eq(schema.payments.id, row.paymentId), eq(schema.payments.state, "refund_pending")));
+    await releasePayment(tx, row, new Date());
+    await emit(tx, row.orgId, "alert.refund_failed", { id: row.paymentId, refund: row.id, reason });
     return row;
   });
+}
+
+/** Back to `settled`, unless another refund is still moving. */
+async function releasePayment(tx: Tx, row: RefundRow, now: Date) {
+  if (await hasOtherOpen(tx, row)) return;
+  await tx.update(schema.payments).set({ state: "settled", updatedAt: now }).where(and(eq(schema.payments.id, row.paymentId), eq(schema.payments.state, "refund_pending")));
 }
 
 const toIntentState = (state: string): IntentState => (state === "refunded" ? "done" : state === "awaiting_deposit" || state === "abandoned" ? "processing" : (state as IntentState));
 const isUnfunded = (state: string) => state === "awaiting_deposit" || state === "abandoned";
 
+/** `now` is when the status was read, not when this runs. See `pollDueRefunds`. */
 export async function applyRefundStatus(refundId: string, status: StatusResponse, now = new Date()) {
   return db().transaction(async (tx) => {
     const [row] = await tx.select().from(schema.refunds).where(eq(schema.refunds.id, refundId)).for("update").limit(1);
     if (!row || row.state === "expired") return row ?? null;
     const current = toIntentState(row.state);
-    const next = nextIntentState(current, status.status);
+    let next = nextIntentState(current, status.status);
     const age = now.getTime() - row.createdAt.getTime();
     const patch: Partial<RefundRow> = { providerStatus: status.status, pollFailures: 0, updatedAt: now, nextPollAt: new Date(now.getTime() + (age < 3_600_000 ? 10_000 : 300_000)) };
     const tx_ = status.swapDetails.destinationChainTxHashes[0]?.hash;
     if (tx_) patch.txHash = tx_;
+    const { amountOut } = status.swapDetails;
+
+    // "Success" with no amount says nothing about what arrived, so it isn't refunded yet.
+    if (next === "done" && !amountOut) {
+      log("error", "provider reported success with no amount", { refundId });
+      next = null;
+    }
+
+    // A replaced address got funded after all. Its replacement closes if nobody paid it. If somebody did,
+    // both are moving and a person has to know: this one is tracked as it stands, so the one-open index holds.
+    let bothFunded = false;
+    if (row.state === "abandoned" && (next === "processing" || next === "done")) {
+      await closeUnfundedSiblings(tx, row, now);
+      bothFunded = await hasOtherOpen(tx, row);
+      if (bothFunded && (!row.providerStatus || row.providerStatus === "PENDING_DEPOSIT")) {
+        log("error", "two refunds funded for one payment", { refundId, paymentId: row.paymentId });
+        await audit(tx, { orgId: row.orgId, actorType: "system", action: "refund.funded_twice", target: row.id, detail: { paymentId: row.paymentId } });
+        await emit(tx, row.orgId, "alert.refund_twice", { id: row.paymentId, refund: row.id });
+      }
+    }
 
     // A route refund stays out of the payment's state until the merchant's money has actually been seen.
     if (isUnfunded(row.state) && status.status === "PENDING_DEPOSIT") {
@@ -248,10 +300,14 @@ export async function applyRefundStatus(refundId: string, status: StatusResponse
       if (Number.isFinite(deadline) && now.getTime() > deadline + ROUTE_GRACE_MS) {
         patch.state = "expired";
         patch.nextPollAt = null;
+        // The merchant said they sent this, and the route never saw it. Somebody has to go and look.
+        if (row.depositTxHash) await emit(tx, row.orgId, "alert.refund_failed", { id: row.paymentId, refund: row.id, reason: `The route never saw your deposit ${row.depositTxHash}. Contact support with this payment's id.` });
       }
     } else if (row.kind === "route" && isUnfunded(row.state) && next === "processing") {
-      patch.state = "processing";
-      await tx.update(schema.payments).set({ state: "refund_pending", updatedAt: now }).where(and(eq(schema.payments.id, row.paymentId), eq(schema.payments.state, "settled")));
+      if (!bothFunded) {
+        patch.state = "processing";
+        await tx.update(schema.payments).set({ state: "refund_pending", updatedAt: now }).where(and(eq(schema.payments.id, row.paymentId), eq(schema.payments.state, "settled")));
+      }
     } else if (next === "processing") {
       patch.state = "processing";
     } else if (next === "done" && current !== "done") {
@@ -261,23 +317,34 @@ export async function applyRefundStatus(refundId: string, status: StatusResponse
       const [payment] = await tx.select().from(schema.payments).where(eq(schema.payments.id, row.paymentId)).for("update").limit(1);
       const refundedBase = sumBase([payment.refundedBase, row.amountBase]);
       const whole = refundedBase >= BigInt(payment.receivedBase ?? "0");
-      const [updated] = await tx.update(schema.payments).set({ refundedBase: refundedBase.toString(), state: whole ? "refunded" : "settled", refundedAt: whole ? now : payment.refundedAt, updatedAt: now }).where(eq(schema.payments.id, payment.id)).returning();
+      const [updated] = await tx.update(schema.payments).set({ refundedBase: refundedBase.toString(), state: whole ? "refunded" : (await hasOtherOpen(tx, row)) ? "refund_pending" : "settled", refundedAt: whole ? now : payment.refundedAt, updatedAt: now }).where(eq(schema.payments.id, payment.id)).returning();
       await tx.insert(schema.paymentEvents).values({ paymentId: payment.id, fromState: payment.state, toState: updated.state, providerStatus: status.status, detail: { refundId: row.id, amountBase: row.amountBase } });
       await emit(tx, row.orgId, "payment.refunded", { ...paymentEventBody(updated), refund: { id: row.id, amount_base: row.amountBase, asset: row.asset, whole } });
+      // It went, so it's refunded. But the customer was promised at least this much.
+      const minimum = (row.quote as QuoteResponse | null)?.quote.minAmountOut;
+      if (minimum && BigInt(amountOut as string) < BigInt(minimum)) {
+        log("error", "refund delivered below its minimum", { refundId, minimum, got: amountOut });
+        await emit(tx, row.orgId, "alert.refund_failed", { id: row.paymentId, refund: row.id, reason: "The route delivered less to the customer than it quoted. Contact support with this payment's id." });
+      }
     } else if (next === "failed") {
+      const failedAt = row.failedAt ?? now;
       patch.state = "failed";
+      patch.failedAt = failedAt;
       patch.failureReason = status.swapDetails.refundReason ?? "The route couldn't complete this refund.";
-      // FAILED isn't REFUNDED: it may yet go through. It stays watched, and blocks a new refund, for a day.
-      patch.nextPollAt = status.status === "FAILED" && age < WATCH_FAILED_MS ? new Date(now.getTime() + 300_000) : null;
-      await tx.update(schema.payments).set({ state: "settled", updatedAt: now }).where(and(eq(schema.payments.id, row.paymentId), eq(schema.payments.state, "refund_pending")));
-    } else if (row.kind === "intent" && (row.state === "submitting" || row.state === "processing") && status.status === "PENDING_DEPOSIT" && now.getTime() > signedDeadline(row)) {
-      // Past its signed deadline with nothing seen: the verifier can't execute it now, so nothing can arrive.
+      patch.nextPollAt = nextFailedPoll(status.status, failedAt, now);
+      await releasePayment(tx, row, now);
+      if (row.state !== "failed") await emit(tx, row.orgId, "alert.refund_failed", { id: row.paymentId, refund: row.id, reason: patch.failureReason });
+    } else if (row.kind === "intent" && (row.state === "submitting" || row.state === "processing") && status.status === "PENDING_DEPOSIT" && now.getTime() > signedDeadline(row) + RELEASE_GRACE_MS) {
+      // Past its signed deadline with nothing seen. It can't execute now, but one that landed just before
+      // could still be on its way to this status, so it's watched like any other failure.
       patch.state = "failed";
+      patch.failedAt = now;
       patch.failureReason = "This refund expired before the route accepted it.";
-      patch.nextPollAt = null;
-      await tx.update(schema.payments).set({ state: "settled", updatedAt: now }).where(and(eq(schema.payments.id, row.paymentId), eq(schema.payments.state, "refund_pending")));
+      patch.nextPollAt = nextFailedPoll(status.status, now, now);
+      await releasePayment(tx, row, now);
+      await emit(tx, row.orgId, "alert.refund_failed", { id: row.paymentId, refund: row.id, reason: patch.failureReason });
     } else if (row.state === "failed" && !next) {
-      patch.nextPollAt = age < WATCH_FAILED_MS ? new Date(now.getTime() + 300_000) : null;
+      patch.nextPollAt = nextFailedPoll(status.status, row.failedAt ?? now, now);
     }
     const [updated] = await tx.update(schema.refunds).set(patch).where(eq(schema.refunds.id, refundId)).returning();
     return updated;
@@ -310,9 +377,11 @@ export async function pollDueRefunds(limit = 25) {
   await Promise.all(
     claimed.rows.map(async (row) => {
       try {
+        // When it was read, not when this finishes: see `pollDuePayouts`.
+        const readAt = new Date();
         const status = await provider().status(row.deposit_address, row.deposit_memo);
         await resendRefundIfStuck(row, status);
-        await applyRefundStatus(row.id, status);
+        await applyRefundStatus(row.id, status, readAt);
       } catch (error) {
         const failures = row.poll_failures + 1;
         if (!(error instanceof ProviderUnavailable || error instanceof ProviderRejected)) log("error", "refund poll failed", { refundId: row.id, error });

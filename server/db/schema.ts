@@ -282,6 +282,7 @@ export const payouts = pgTable(
     providerStatus: text("provider_status"),
     destinationTxHashes: jsonb("destination_tx_hashes").$type<{ hash: string; explorerUrl: string }[]>().notNull().default([]),
     failureReason: text("failure_reason"),
+    failedAt: at("failed_at"),
     requestedBy: text("requested_by"),
     live: boolean("live").notNull().default(false),
     sample: boolean("sample").notNull().default(false),
@@ -328,6 +329,7 @@ export const refunds = pgTable(
     /** The merchant's own transaction on a route refund. Stops reopening it offering a second send. */
     depositTxHash: text("deposit_tx_hash"),
     failureReason: text("failure_reason"),
+    failedAt: at("failed_at"),
     requestedBy: text("requested_by"),
     live: boolean("live").notNull().default(false),
     nextPollAt: at("next_poll_at"),

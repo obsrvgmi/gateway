@@ -2,14 +2,13 @@ import "server-only";
 import { recoverMessageAddress, type Hex } from "viem";
 import { isValidAddress } from "@/lib/address";
 import { ASSETS } from "@/lib/assets";
-import { checkTransferPayload, encodeErc191Signature } from "@/lib/intents";
+import { checkTransferPayload, encodeErc191Signature, MAX_SLIPPAGE_BPS } from "@/lib/intents";
 import type { AssetSymbol } from "@/lib/types";
 import { badRequest, HttpError } from "../http/errors";
 import { assertLiveQuoteUsable, assertQuoteEcho, assertQuoteSigned, GuardError, requestedDeadlineMs } from "./guards";
 import { provider } from "./provider";
 import { ProviderRejected, ProviderUnavailable, type QuoteRequest, type QuoteResponse } from "./provider/types";
 
-const SLIPPAGE_BPS = 100;
 /** How long a prepared payout waits for the merchant's wallet. A new quote is cheaper than a stale price. */
 export const SIGN_WINDOW_MS = 10 * 60_000;
 
@@ -39,7 +38,7 @@ export async function prepareIntent(input: { account: string; asset: AssetSymbol
   const request: QuoteRequest = {
     dry: false,
     swapType: "EXACT_INPUT",
-    slippageTolerance: SLIPPAGE_BPS,
+    slippageTolerance: MAX_SLIPPAGE_BPS,
     originAsset: ASSETS[input.asset].assetId,
     depositType: "INTENTS",
     destinationAsset: destination.assetId,

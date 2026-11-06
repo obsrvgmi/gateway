@@ -129,6 +129,8 @@ export interface Payout {
   createdAt: string;
   completedAt: string | null;
   failureReason?: string;
+  /** It failed but could still go through, so its funds stay reserved and retrying could pay twice. */
+  watching?: boolean;
 }
 
 export interface PayoutDestination {
@@ -156,7 +158,7 @@ export interface ApiKey {
   createdAt: string;
 }
 
-export type WebhookEvent = "payment.processing" | "payment.settled" | "payment.refunded" | "payment.expired" | "payment.failed" | "payout.sent" | "payout.failed" | "link.created";
+export type WebhookEvent = "payment.processing" | "payment.settled" | "payment.refunded" | "payment.expired" | "payment.failed" | "payment.underpaid" | "payout.sent" | "payout.failed" | "link.created";
 
 export interface Webhook {
   id: string;

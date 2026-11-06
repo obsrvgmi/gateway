@@ -1,5 +1,5 @@
 {
-  "id": "92a4257d-029d-4824-92ea-b3a5ab9d669f",
+  "id": "05864e73-b3b9-44b1-91bc-9234d2233e1a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1717,6 +1717,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "failed_at": {
+          "name": "failed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "requested_by": {
           "name": "requested_by",
           "type": "text",
@@ -2038,6 +2044,12 @@
         "failure_reason": {
           "name": "failure_reason",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failed_at": {
+          "name": "failed_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

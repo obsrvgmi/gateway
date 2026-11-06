@@ -75,7 +75,7 @@ export async function pausedRoutes(database: Db = db()) {
   return new Set(rows.map((row) => row.key));
 }
 
-const ECHOED: (keyof QuoteRequest)[] = ["swapType", "originAsset", "destinationAsset", "amount", "refundTo", "refundType", "recipient", "recipientType", "depositType", "dry"];
+const ECHOED: (keyof QuoteRequest)[] = ["swapType", "slippageTolerance", "originAsset", "destinationAsset", "amount", "refundTo", "refundType", "recipient", "recipientType", "depositType", "dry"];
 /** The service adds its own fee entry on top of ours. More than this on top of ours is not a fee we agreed to. */
 const MAX_SERVICE_FEE_BPS = 30;
 
@@ -83,6 +83,10 @@ const MAX_SERVICE_FEE_BPS = 30;
 export function assertQuoteEcho(sent: QuoteRequest, response: QuoteResponse) {
   for (const field of ECHOED) {
     if (response.quoteRequest[field] !== sent[field]) throw new GuardError("quote_mismatch", `The provider's quote doesn't match the request (${field}).`);
+  }
+  // Signed fields we never set, and can't say what they'd do.
+  for (const field of ["customRecipientMsg", "virtualChainRecipient", "virtualChainRefundRecipient"]) {
+    if ((response.quoteRequest as Record<string, unknown>)[field]) throw new GuardError("quote_mismatch", `The provider's quote carries an instruction we didn't ask for (${field}).`);
   }
   // Signatures don't cover fees, so these are checked by value.
   const fees = (response.quoteRequest.appFees ?? []) as { recipient: string; fee: number }[];
