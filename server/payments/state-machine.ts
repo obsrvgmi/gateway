@@ -146,8 +146,15 @@ export const WATCH_FAILED_MS = 86_400_000;
 /** A signed intent can't execute past its deadline, but the status can lag behind one that landed just before it. */
 export const RELEASE_GRACE_MS = 5 * 60_000;
 
-/** The next look at a failed move, or null once it's settled. REFUNDED is final: the funds are confirmed back. */
-export const nextFailedPoll = (status: ProviderStatus, failedAt: Date, now: Date) => (status !== "REFUNDED" && now.getTime() - failedAt.getTime() < WATCH_FAILED_MS ? new Date(now.getTime() + 300_000) : null);
+/**
+ * The next look at a failed move, or null once it's settled. REFUNDED is final: the funds are confirmed
+ * back. A provider saying it's moving again means money in flight, which never stops being tracked.
+ */
+export function nextFailedPoll(status: ProviderStatus, failedAt: Date, now: Date) {
+  if (status === "REFUNDED") return null;
+  const moving = status === "PROCESSING" || status === "KNOWN_DEPOSIT_TX" || status === "SUCCESS";
+  return moving || now.getTime() - failedAt.getTime() < WATCH_FAILED_MS ? new Date(now.getTime() + 300_000) : null;
+}
 
 /** Payouts and refunds follow the same provider statuses, with these outcomes. */
 export type IntentState = "awaiting_signature" | "submitting" | "processing" | "done" | "failed" | "expired";

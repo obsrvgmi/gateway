@@ -6,7 +6,7 @@
  *   node scripts/mutate-guards.mjs                 all of them
  *   node scripts/mutate-guards.mjs refund wallet   only mutants whose name contains a word
  *
- * A "find" that no longer matches is reported as STALE and counts as a failure, so this list can't rot.
+ * A "find" that doesn't match exactly once is reported as STALE and counts as a failure, so this list can't rot.
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -68,7 +68,7 @@ const MUTANTS = [
   // What a wallet is asked to sign
   ["payload: contract", I, "if (parsed.verifying_contract !== VERIFIER_CONTRACT) return", "if (false) return", ["test/intents.test.ts"]],
   ["payload: signer", I, 'if (typeof parsed.signer_id !== "string" || parsed.signer_id.toLowerCase() !== expected.signer.toLowerCase()) return', "if (false) return", ["test/intents.test.ts"]],
-  ["payload: expired", I, "if (!Number.isFinite(deadline) || deadline <= now) return", "if (false) return", ["test/intents.test.ts"]],
+  ["payload: expired", I, 'if (!Number.isFinite(deadline) || deadline <= now) return "The payload has already expired.";', "", ["test/intents.test.ts"]],
   ["payload: one action", I, "if (!Array.isArray(parsed.intents) || parsed.intents.length !== 1) return", "if (false) return", ["test/intents.test.ts"]],
   ["payload: is a transfer", I, 'if (intent.intent !== "transfer") return', "if (false) return", ["test/intents.test.ts"]],
   ["payload: receiver", I, "if (intent.receiver_id !== expected.receiver) return", "if (false) return", ["test/intents.test.ts"]],
@@ -80,7 +80,7 @@ const MUTANTS = [
   ["signature: recovery byte", I, "if (v === 27 || v === 28) bytes[64] = v - 27;", "if (false) bytes[64] = v - 27;", ["test/intents.test.ts"]],
   ["browser: production ignores server key", S, "allowTestKey ? serverKey : ONE_CLICK_QUOTE_KEY", "serverKey", ["test/sign-intent.test.ts"]],
   ["browser: signature", S, "if (!verifyQuoteSignature(response, allowTestKey ? serverKey : ONE_CLICK_QUOTE_KEY)) throw", "if (false) throw", ["test/sign-intent.test.ts"]],
-  ["browser: quote fields", S, "if (quoteRefusal) throw", "if (false) throw", ["test/sign-intent.test.ts"]],
+  ["browser: quote fields", S, "if (refusal) throw new WalletError(`${refusal} It wasn't sent to your wallet.`);", "", ["test/sign-intent.test.ts"]],
   ["browser: payload", S, "if (refusal) throw new WalletError(`This request failed", "if (false) throw new WalletError(`This request failed", ["test/sign-intent.test.ts"]],
   ["browser: right wallet", S, "if (account !== expected.signer.toLowerCase()) throw", "if (false) throw", ["test/sign-intent.test.ts"]],
   ["browser: route refund fields", S, "if (refusal) throw new WalletError(`${refusal} Nothing was sent.`);", "", ["test/sign-intent.test.ts"]],
@@ -112,7 +112,9 @@ const MUTANTS = [
   ["payout: destination signer", P, "if (recovered?.toLowerCase() !== wallet.toLowerCase() || !destination.message.includes(destination.address)) throw", "if (false) throw", ENGINE],
   ["payout: destination tenant", P, "and(eq(schema.destinations.id, input.destinationId), eq(schema.destinations.orgId, org.id), isNull(schema.destinations.removedAt))", "and(eq(schema.destinations.id, input.destinationId), isNull(schema.destinations.removedAt))", ENGINE],
   ["payout: tenant", P, "and(eq(schema.payouts.id, input.payoutId), eq(schema.payouts.orgId, input.orgId))", "eq(schema.payouts.id, input.payoutId)", ENGINE],
-  ["payout: single send", P, '.where(and(eq(schema.payouts.id, row.id), eq(schema.payouts.state, "awaiting_signature")))', ".where(eq(schema.payouts.id, row.id))", ENGINE],
+  ["payout: single send", P, `updatedAt: new Date() })
+      .where(and(eq(schema.payouts.id, row.id), eq(schema.payouts.state, "awaiting_signature")))`, `updatedAt: new Date() })
+      .where(eq(schema.payouts.id, row.id))`, ENGINE],
   ["payout: already sent", P, 'if (row.state !== "awaiting_signature") return row;', "", ENGINE],
   ["payout: expired signature", P, "if (!row.signExpiresAt || row.signExpiresAt.getTime() < Date.now()) {", "if (false) {", ENGINE],
   ["payout: wallet changed", P, "if (org.walletAddress !== row.signer) throw", "if (false) throw", ENGINE],
@@ -157,7 +159,7 @@ const MUTANTS = [
   ["refund: refused send tells the merchant", R, 'await emit(tx, row.orgId, "alert.refund_failed", { id: row.paymentId, refund: row.id, reason });', "", ENGINE],
   ["refund: lost deposit tells the merchant", R, "if (row.depositTxHash) await emit(tx, row.orgId, \"alert.refund_failed\"", "if (false) await emit(tx, row.orgId, \"alert.refund_failed\"", ENGINE],
   ["refund: failure stays watched", R, "patch.nextPollAt = nextFailedPoll(status.status, failedAt, now);", "patch.nextPollAt = null;", ENGINE],
-  ["refund: watched failure blocks a new one", R, 'or(inArray(schema.refunds.state, OPEN), and(eq(schema.refunds.state, "failed"), isNotNull(schema.refunds.nextPollAt)))', "inArray(schema.refunds.state, OPEN)", ENGINE],
+  ["refund: watched failure blocks a new one", R, 'and(eq(schema.refunds.state, "failed"), isNotNull(schema.refunds.nextPollAt))', 'and(eq(schema.refunds.state, "nothing"), isNotNull(schema.refunds.nextPollAt))', ENGINE],
   ["refund: old address not reissued", R, "const addressGood = quoteDeadline(open) - Date.now() > MIN_ADDRESS_LIFE_MS;", "const addressGood = true;", ENGINE],
   ["refund: sent stays sent", R, "if (open.depositTxHash) {", "if (false) {", ENGINE],
   ["refund: deposit tenant", R, 'and(eq(schema.refunds.id, input.refundId), eq(schema.refunds.orgId, input.orgId), eq(schema.refunds.kind, "route"))', 'and(eq(schema.refunds.id, input.refundId), eq(schema.refunds.kind, "route"))', ENGINE],
@@ -185,6 +187,7 @@ const MUTANTS = [
 
   // State
   ["state: settled is final", SM, 'if (current === "settled" || current === "underpaid" || current === "provider_refunded") return null;', "", ["test/state-machine.test.ts"]],
+  ["state: failed but moving stays tracked", SM, 'const moving = status === "PROCESSING" || status === "KNOWN_DEPOSIT_TX" || status === "SUCCESS";', "const moving = false;", ENGINE],
   ["state: short isn't a failed payment", SM, 'return "payment.underpaid";', 'return "payment.failed";', ENGINE],
   ["state: money in flight never dropped", SM, "if (failures > 0) return !moving && now > lastDay ? null :", "if (failures > 0) return now > lastDay ? null :", ["test/state-machine.test.ts"]],
   ["settle: short isn't settled", "server/payments/poller.ts", 'if (next === "settled" && BigInt(swapDetails.amountOut as string) < BigInt(row.receiveBase)) {', "if (false) {", ENGINE],
@@ -264,9 +267,11 @@ if (!run(["test/intents.test.ts", "test/state-machine.test.ts"])) {
 const results = { KILLED: [], SURVIVED: [], STALE: [] };
 for (const [name, file, find, replace, tests] of chosen) {
   const original = readFileSync(file, "utf8");
-  if (!original.includes(find)) {
+  // Exactly once: a find that also matches elsewhere can mutate the wrong line, and that looks like a missing test.
+  const matches = original.split(find).length - 1;
+  if (matches !== 1) {
     results.STALE.push(name);
-    console.log(`STALE     ${name}  (${file})`);
+    console.log(`STALE     ${name}  (${file}, ${matches} matches)`);
     continue;
   }
   writeFileSync(file, original.replace(find, replace));

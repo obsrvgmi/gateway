@@ -12,11 +12,17 @@ const EMAIL = `owner-${Date.now()}@example.com`;
 async function installWallet(context: BrowserContext) {
   await context.exposeFunction("__walletSign", async (hexMessage: string) => merchantWallet.signMessage({ message: hexToString(hexMessage as Hex) }));
   await context.addInitScript((address) => {
+    let chain = "0x1";
     const provider = {
       request: async ({ method, params }: { method: string; params?: unknown[] }) => {
         if (method === "eth_requestAccounts" || method === "eth_accounts") return [address];
         if (method === "personal_sign") return (window as unknown as { __walletSign(m: unknown): Promise<string> }).__walletSign((params as unknown[])[0]);
-        if (method === "eth_chainId") return "0x1";
+        if (method === "eth_chainId") return chain;
+        if (method === "wallet_switchEthereumChain") {
+          chain = (params as { chainId: string }[])[0].chainId;
+          return null;
+        }
+        if (method === "eth_sendTransaction") return `0x${"ab".repeat(32)}`;
         throw new Error(`Unexpected wallet call: ${method}`);
       },
     };
@@ -207,6 +213,81 @@ test("an embedded widget takes a payment on another site", async ({ browser }) =
   await expect(frame.getByText("Payment complete")).toBeVisible({ timeout: 60_000 });
   // The site hears about it, for its interface.
   await expect(page.locator("#events")).toContainText("settled:pay_");
+  await context.close();
+});
+
+async function customerPays() {
+  const context = await merchant.context().browser()!.newContext();
+  const page = await context.newPage();
+  await page.goto(linkUrl);
+  await page.getByRole("radio", { name: "Ether on Ethereum" }).check({ force: true });
+  await page.getByLabel(/Your Ethereum wallet/).fill(CUSTOMER_WALLET);
+  await page.getByRole("button", { name: "Continue to payment" }).click();
+  await page.getByRole("button", { name: "Simulate payment" }).click();
+  await expect(page.getByText("Payment complete")).toBeVisible({ timeout: 60_000 });
+  await context.close();
+}
+
+/** The newest payment's drawer, once its refund button is there. */
+async function openNewestRefund() {
+  await expect(async () => {
+    await merchant.goto("/dashboard/payments");
+    await merchant.getByRole("row", { name: /Brand sprint deposit/ }).first().click();
+    await expect(merchant.getByRole("button", { name: "Refund", exact: true })).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 60_000 });
+  await merchant.getByRole("button", { name: "Refund", exact: true }).click();
+  await merchant.getByRole("button", { name: "Continue" }).click();
+}
+
+test("a refund from the balance is checked in the browser and signed by the wallet", async () => {
+  await customerPays();
+  await openNewestRefund();
+  await expect(merchant.getByRole("heading", { name: "Check and sign" })).toBeVisible();
+  // The drawer behind it names the wallet too.
+  await expect(merchant.getByText("Customer's wallet").last()).toBeVisible();
+  await merchant.getByRole("button", { name: "Sign in wallet" }).click();
+  await expect(merchant.getByText("Refund on its way")).toBeVisible({ timeout: 30_000 });
+});
+
+test("a refund of direct money is sent from the wallet, and can't be offered twice", async () => {
+  const set = (settlementMode: string) => merchant.evaluate(async (mode) => (await fetch("/api/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ settlementMode: mode }) })).status, settlementMode);
+  expect(await set("direct")).toBe(200);
+  try {
+    await customerPays();
+    await openNewestRefund();
+    await expect(merchant.getByRole("heading", { name: "Send the refund" })).toBeVisible();
+    await expect(merchant.getByText("If the route fails, it returns to")).toBeVisible();
+    await merchant.getByRole("button", { name: "Send from wallet" }).click();
+    await expect(merchant.getByText("Refund sent")).toBeVisible({ timeout: 30_000 });
+  } finally {
+    expect(await set("balance")).toBe(200);
+  }
+});
+
+test("a reload while the wallet is asking doesn't offer the send again", async ({ browser }) => {
+  const context = await browser.newContext();
+  // The wallet never answers, as when someone reloads with the prompt still open.
+  await context.addInitScript((address) => {
+    (window as unknown as { ethereum: unknown }).ethereum = {
+      request: ({ method }: { method: string }) => {
+        if (method === "eth_requestAccounts" || method === "eth_accounts") return Promise.resolve([address]);
+        if (method === "eth_chainId") return Promise.resolve("0x1");
+        return new Promise(() => undefined);
+      },
+    };
+  }, CUSTOMER_WALLET);
+  const page = await context.newPage();
+  await page.goto(linkUrl);
+  await page.getByRole("radio", { name: "Ether on Ethereum" }).check({ force: true });
+  await page.getByLabel(/Your Ethereum wallet/).fill(CUSTOMER_WALLET);
+  await page.getByRole("button", { name: "Continue to payment" }).click();
+  await page.getByRole("button", { name: /Pay from wallet/ }).click();
+  await expect(page.getByRole("button", { name: "Check your wallet" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("You may have already sent this")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Pay from wallet/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "I checked, nothing was sent" }).click();
+  await expect(page.getByRole("button", { name: /Pay from wallet/ })).toBeVisible();
   await context.close();
 });
 

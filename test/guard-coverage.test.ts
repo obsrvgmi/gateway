@@ -653,6 +653,15 @@ describe("a payout that doesn't complete", () => {
     expect((await applyPayoutStatus(id, FAILED, new Date(Date.now() + WATCH_FAILED_MS + 60_000)))?.nextPollAt).toBeNull();
   });
 
+  it("keeps watching past the day if the provider says it's moving again, and it still counts", async () => {
+    const { id } = await started();
+    await applyPayoutStatus(id, FAILED);
+    const later = new Date(Date.now() + 3 * WATCH_FAILED_MS);
+    expect((await applyPayoutStatus(id, { ...base, status: "PROCESSING" }, later))?.nextPollAt).not.toBeNull();
+    const done = await applyPayoutStatus(id, { ...base, status: "SUCCESS", swapDetails: { ...base.swapDetails, amountOut: "1000000000000000000000" } }, later);
+    expect(done?.state).toBe("sent");
+  });
+
   it("isn't sent without proof of what arrived, and a shortfall tells the merchant", async () => {
     const { orgId, id } = await started();
     expect((await applyPayoutStatus(id, { ...base, status: "SUCCESS" }))?.state).not.toBe("sent");
