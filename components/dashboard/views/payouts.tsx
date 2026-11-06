@@ -27,7 +27,7 @@ import { BalanceBar, PayoutBars } from "../charts";
 import { payoutsCsv, saveCsv } from "../csv";
 import { formatCount, formatDay, formatRowDate, formatStamp, plural } from "../fmt";
 import { PayoutDialog } from "../payout-dialog";
-import { Bento, CopyButton, EmptyState, ModeTag, PageHeader, Panel, PayoutStatusChip, useWideMain } from "../ui";
+import { Bento, CopyButton, EmptyState, MAIN_WIDE, ModeTag, PageHeader, Panel, PayoutStatusChip, useMainAtLeast, useWideMain } from "../ui";
 
 const PAGE_SIZE = 10;
 const SCHEDULES: [PayoutSchedule, string][] = [["daily", "Daily"], ["weekly", "Weekly"], ["manual", "Manual"]];
@@ -136,6 +136,7 @@ function DestinationModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
 export function PayoutsView() {
   const { payments, payouts, settings, settlement, prices } = useGateway();
   const wide = useWideMain();
+  const roomy = useMainAtLeast(MAIN_WIDE);
   const [paying, setPaying] = useState(false);
   const [adding, setAdding] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -199,8 +200,8 @@ export function PayoutsView() {
         </div>
       ))}
 
-      <Bento>
-        <section aria-label="Balance" className="stage-plate col-span-12 justify-between gap-4 @3xl:p-5 @5xl:col-span-7">
+      <Bento className="@wide:grid-rows-[auto_auto_auto_1fr] @ultra:grid-rows-[auto_auto_1fr]">
+        <section aria-label="Balance" className="stage-plate col-span-12 justify-between gap-4 @3xl:p-5 @5xl:col-span-7 @ultra:col-span-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-0.5">
               <h2 className="text-body-regular text-text-secondary">Available to pay out</h2>
@@ -235,7 +236,7 @@ export function PayoutsView() {
           )}
         </section>
 
-        <Panel title={next ? `Next reminder, ${formatPayoutDate(next)}` : "You choose when to pay out"} description={next ? `About ${formatUsd(nextPayoutEstimate(position, next))} by then. We'll remind you, and your wallet signs it. Gateway can't send funds on its own.` : "Nothing leaves until you sign it."} className="col-span-12 @5xl:col-span-5">
+        <Panel title={next ? `Next reminder, ${formatPayoutDate(next)}` : "You choose when to pay out"} description={next ? `About ${formatUsd(nextPayoutEstimate(position, next))} by then. We'll remind you, and your wallet signs it. Gateway can't send funds on its own.` : "Nothing leaves until you sign it."} className="col-span-12 @5xl:col-span-5 @ultra:col-span-4">
           <div className="grid grid-cols-1 gap-4 @xl:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label>Schedule</Label>
@@ -258,7 +259,7 @@ export function PayoutsView() {
           </div>
         </Panel>
 
-        <Panel id="hold" title="On hold" description={holdDays ? `Your ${holdDays}-day refund window keeps new payments out of payouts here, so you can refund first. Your wallet can still move them directly.` : "No refund window: payments are available as soon as they settle."} className="col-span-12 scroll-mt-20 @2xl:col-span-6 @5xl:col-span-4" >
+        <Panel id="hold" title="On hold" description={holdDays ? `Your ${holdDays}-day refund window keeps new payments out of payouts here, so you can refund first. Your wallet can still move them directly.` : "No refund window: payments are available as soon as they settle."} className="col-span-12 scroll-mt-20 @2xl:col-span-6 @5xl:col-span-4 @wide:col-start-9 @wide:row-start-2" >
           
           {position.releases.length ? (
             <ul className="flex flex-col divide-y divide-separator-border">
@@ -274,7 +275,7 @@ export function PayoutsView() {
           ) : <p className="text-body-regular text-text-secondary">Nothing is on hold right now.</p>}
         </Panel>
 
-        <Panel title="Where it goes" actions={<Button variant="secondary" size="small" leadingIcon={RiAddLine} onClick={() => setAdding(true)}>Add</Button>} className="col-span-12 @2xl:col-span-6 @5xl:col-span-4">
+        <Panel title="Where it goes" actions={<Button variant="secondary" size="small" leadingIcon={RiAddLine} onClick={() => setAdding(true)}>Add</Button>} className="col-span-12 @2xl:col-span-6 @5xl:col-span-4 @wide:col-start-9 @wide:row-start-3 @ultra:col-span-3 @ultra:col-start-10 @ultra:row-start-1">
           <ul className="flex flex-col divide-y divide-separator-border">
             {destinations.map((item) => {
               const isDefault = item.id === defaultDestinationId;
@@ -292,7 +293,7 @@ export function PayoutsView() {
           </ul>
         </Panel>
 
-        <Panel title="Recent runs" description={recent.length ? `${formatUsd(position.paidOutUsd)} sent across ${plural(position.sentCount, "payout")}` : "Runs appear here after your first payout."} className="col-span-12 @5xl:col-span-4">
+        <Panel title="Recent runs" description={recent.length ? `${formatUsd(position.paidOutUsd)} sent across ${plural(position.sentCount, "payout")}` : "Runs appear here after your first payout."} className="col-span-12 @5xl:col-span-4 @wide:col-start-9 @wide:row-start-4 @ultra:row-start-3">
           {recent.length > 1 ? <PayoutBars rows={recent} /> : <div className="dash-well h-24 rounded-xl" aria-hidden />}
         </Panel>
 
@@ -306,7 +307,7 @@ export function PayoutsView() {
               <SegmentedControlItem id="failed">{`Failed ${failed.length}`}</SegmentedControlItem>
             </SegmentedControl>
           }
-          className="col-span-12 gap-3"
+          className="col-span-12 gap-3 @wide:col-span-8 @wide:col-start-1 @wide:row-span-3 @wide:row-start-2 @ultra:row-span-2"
         >
           {rows.length === 0 ? (
             <EmptyState icon={RiBankLine} title={payouts.length ? "No payouts match" : "No payouts yet"} description={payouts.length ? "Try a different status." : "Pay out your available balance to see it here."} />
@@ -317,6 +318,8 @@ export function PayoutsView() {
                 <TableColumn>Amount</TableColumn>
                 <TableColumn>Destination</TableColumn>
                 <TableColumn>Type</TableColumn>
+                {roomy && <TableColumn>Fee</TableColumn>}
+                {roomy && <TableColumn>Reference</TableColumn>}
                 <TableColumn>Status</TableColumn>
               </TableHeader>
               <TableBody>
@@ -326,6 +329,8 @@ export function PayoutsView() {
                     <TableCell><span className="flex items-center gap-2 whitespace-nowrap tabular-nums"><TokenMark symbol={payout.asset} size="sm" />{formatToken(payout.amount, payout.asset)}<span className="text-text-secondary">{formatUsd(payout.usd)}</span></span></TableCell>
                     <TableCell><span className="flex flex-col"><span className="text-body-medium text-text-primary">{payout.destinationLabel}</span><span dir="ltr" className="text-start text-caption-1-regular text-text-secondary">{shortAddress(payout.destinationAddress)}</span></span></TableCell>
                     <TableCell>{payout.trigger === "scheduled" ? "Scheduled" : "Manual"}</TableCell>
+                    {roomy && <TableCell className="whitespace-nowrap tabular-nums">{formatUsd(payout.feeUsd)}</TableCell>}
+                    {roomy && <TableCell><span dir="ltr" className="whitespace-nowrap text-caption-1-regular text-text-secondary">{payout.reference}</span></TableCell>}
                     <TableCell><PayoutStatusChip status={payout.status} /></TableCell>
                   </TableRow>
                 ))}
@@ -348,9 +353,9 @@ export function PayoutsView() {
             </ul>
           )}
           {rows.length > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            <div className="mt-auto flex flex-wrap items-center justify-between gap-2 px-1">
               <p className="text-body-regular text-text-secondary tabular-nums">{plural(visible.length, "payout")}</p>
-              <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} />
+              <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} className="w-auto min-w-80 flex-1" />
             </div>
           )}
         </Panel>

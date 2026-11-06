@@ -31,20 +31,20 @@ A merchant creates a payment link or drops a checkout widget on their site. The 
 
 ### Landing: pick an asset, watch the route light up
 
-The hero above is interactive: choose what the customer pays with and what the merchant receives, and the channels between them light up. It uses illustrative prices and moves no funds.
+The hero above is interactive: choose what the customer pays with and what the merchant receives, and the channels between them follow a three-step settlement timeline. Below it, two sections of the same shape (Payment Links and Widgets) each show how it works in three steps with working controls, then four things you get. The page closes with "They pay their way. You get paid yours." It all uses illustrative prices and moves no funds.
 
-### Payment links: a link drawn as a cheque
+### Payment links: send a link, get paid
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/assets/cheque-dark.jpg">
-  <img alt="A payment link rendered as a dark green cheque with the amount, a QR code and a copy link field" src=".github/assets/cheque-light.jpg">
+  <img alt="Three steps to create and share a payment link beside the link shown as a cheque in a chat, above a list of features" src=".github/assets/cheque-light.jpg">
 </picture>
 
-### Embeddable widget, live on the page
+### Embeddable widget: add checkout to your site
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/assets/console-dark.jpg">
-  <img alt="Widget console: accent, corners and receive-asset controls beside a live checkout and its embed snippet" src=".github/assets/console-light.jpg">
+  <img alt="Three steps to customise and embed the checkout beside a merchant site running it live, above a list of features" src=".github/assets/console-light.jpg">
 </picture>
 
 ### Dashboard overview
@@ -108,7 +108,7 @@ Using NEAR Intents means carrying its risks: a pause, an exploit or a compliance
 
 | Route | What it is |
 | --- | --- |
-| `/` | Landing page with a live checkout demo |
+| `/` | Landing page: illustrative checkout hero, Payment Links and Widgets sections, footer |
 | `/pay/[id]` | Hosted checkout, open to anyone with the link |
 | `/dashboard` | Overview: range control, volume, KPIs, payouts, live feed, breakdowns |
 | `/dashboard/payments` | Filters, sorting, bulk actions, detail drawer |
@@ -173,7 +173,8 @@ app/                  Pages and API routes
 components/
   checkout/           LiveCheckout (real), CheckoutWidget (previews and landing)
   dashboard/          Shell, sidebar, primitives, charts, views/
-  marketing/          Landing page
+  marketing/          Landing hero, flow channels, the two product scenes (Scene template), nav, footer
+  brand/              Logo, token logos, guilloche seal
   base/ application/ foundations/   Vendored BoardUI source
 lib/                  Shared by browser and server: assets, money, intent checks, store
 server/               Server only
@@ -185,6 +186,10 @@ worker/               Background jobs
 packages/react/       @gateway/react
 e2e/ test/            Browser, integration and live tests
 docs/                 Design and runbooks
+styles/               BoardUI theme, typography, landing stage and page styles, dashboard width tiers
+public/guilloche/     SVG art used as CSS masks
+hooks/ utils/         BoardUI helpers (cx, etc.)
+.github/assets/       README screenshots and social preview
 ```
 
 ## Design system

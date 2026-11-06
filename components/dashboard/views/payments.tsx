@@ -18,7 +18,7 @@ import { toast } from "@/components/base/toast/toast";
 import { TokenMark } from "@/components/brand/token-mark";
 import { NavButton } from "@/components/nav-button";
 import { ASSETS, PAY_ASSETS } from "@/lib/assets";
-import { formatToken, formatUsd, formatUsdWhole } from "@/lib/format";
+import { formatToken, formatUsd, formatUsdWhole, shortAddress } from "@/lib/format";
 import { assetMix, metricsNow, statusCounts, summarize } from "@/lib/metrics";
 import { useGateway } from "@/lib/store";
 import { RefundDialog } from "../refund-dialog";
@@ -28,13 +28,16 @@ import { RankBars, assetColor } from "../charts";
 import { downloadCsv } from "../csv";
 import { formatCompactUsd, formatCount, formatPercent, formatRowDate, formatSeconds } from "../fmt";
 import { preloadPaymentDrawer } from "../preload";
-import { Bento, copyText, EmptyState, PageHeader, Panel, PAYMENT_STATUS_LABEL, PaymentStatusChip, Stat, useWideMain } from "../ui";
+import { Bento, copyText, EmptyState, MAIN_ULTRA, MAIN_WIDE, PageHeader, Panel, PAYMENT_STATUS_LABEL, PaymentStatusChip, Stat, useMainAtLeast, useWideMain } from "../ui";
 
 const PaymentDrawer = dynamic(() => preloadPaymentDrawer().then((module) => module.PaymentDrawer), { ssr: false });
 // Motion and the calendar load with the "Custom range" option, not with the page.
 const DateRangePicker = dynamic(() => import("@/components/base/date-picker/date-range-picker").then((module) => module.DateRangePicker), { ssr: false, loading: () => <div aria-hidden className="h-10 w-56 rounded-xl bg-background-secondary-default" /> });
 
 const PAGE_SIZE = 12;
+/** A larger display has the height for more rows, and paging less is the point of the room. */
+const PAGE_SIZE_ROOMY = 16;
+const PAGE_SIZE_ULTRA = 20;
 const DAY = 86_400_000;
 const STATUSES: PaymentStatus[] = ["settled", "processing", "refunded", "failed", "expired"];
 const PRESETS = [["all", "Any time"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["90", "Last 90 days"], ["custom", "Custom range"]] as const;
@@ -61,6 +64,10 @@ export function PaymentsView() {
   const { payments } = useGateway();
   const params = useSearchParams();
   const wide = useWideMain();
+  // More room means more of each payment, not longer gaps between the same five columns.
+  const roomy = useMainAtLeast(MAIN_WIDE);
+  const ultra = useMainAtLeast(MAIN_ULTRA);
+  const pageSize = ultra ? PAGE_SIZE_ULTRA : roomy ? PAGE_SIZE_ROOMY : PAGE_SIZE;
   // Every filter can arrive in the URL, so a figure elsewhere can open exactly the rows behind it.
   const [query, setQuery] = useState(params.get("q") ?? "");
   const [status, setStatus] = useState<PaymentStatus | "all">((params.get("status") as PaymentStatus | null) ?? "all");
@@ -118,9 +125,9 @@ export function PaymentsView() {
   const counts = useMemo(() => statusCounts(scoped.filter((p) => asset === "all" || p.payAsset === asset)), [scoped, asset]);
   const assets = useMemo(() => assetMix(filtered), [filtered]);
 
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const rows = sorted.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const rows = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const sourceName = sourceId ? payments.find((p) => p.sourceId === sourceId)?.sourceName ?? sourceId : null;
   const chips = [
@@ -186,17 +193,19 @@ export function PaymentsView() {
         description={`${formatCount(payments.length)} payments through your links and widgets. All times are UTC.`}
         actions={<Button variant="secondary" leadingIcon={RiDownload2Line} disabled={filtered.length === 0} onClick={() => exportRows(sorted)}>Export CSV</Button>}
       />
-      <Bento>
+      <Bento className="@wide:grid-rows-[auto_1fr]">
+        <div className="contents @wide:col-span-3 @wide:col-start-10 @wide:row-start-1 @wide:grid @wide:grid-cols-2 @wide:gap-4">
         {[
           ["Settled volume", formatUsdWhole(summary.volume), `${formatCount(summary.count)} of ${formatCount(summary.total)} payments`],
           ["Success rate", formatPercent(summary.successRate), `${formatCount(summary.inFlightCount)} still in flight`],
           ["Avg settlement", formatSeconds(summary.avgSettle), summary.avgSettle === null ? "Nothing settled" : `95% within ${summary.p95}s`],
           ["Average payment", formatUsd(summary.avgTicket), `${formatCount(summary.payers)} unique payers`],
         ].map(([label, value, note]) => (
-          <Stat key={label} label={label} value={value} note={note} />
+          <Stat key={label} label={label} value={value} note={note} className="@wide:col-span-1" />
         ))}
+        </div>
 
-        <Panel className="col-span-12 gap-3 p-3 @3xl:p-3 @5xl:col-span-9">
+        <Panel className="col-span-12 gap-3 p-3 @3xl:p-3 @5xl:col-span-9 @wide:col-start-1 @wide:row-span-2 @wide:row-start-1">
           <div className="flex flex-wrap items-center gap-2">
             <SearchField aria-label="Search payments" placeholder="Search ID, source, asset or payer" value={query} onChange={(value) => { setQuery(value); resetSelection(); }} className="min-w-[200px] flex-1" />
             <Select aria-label="Filter by date" selectedKey={preset === "window" || preset === "custom-days" ? "custom" : preset} onSelectionChange={(key) => { setPreset(key as Preset); resetSelection(); }}>
@@ -256,16 +265,21 @@ export function PaymentsView() {
                   <TableHeader>
                     <TableColumn aria-label="Select"><Checkbox slot="selection" size="sm" /></TableColumn>
                     <TableColumn id="source" isRowHeader allowsSorting>{({ sortDirection }) => <SortLabel direction={sortDirection}>Source</SortLabel>}</TableColumn>
+                    {ultra && <TableColumn>ID</TableColumn>}
                     <TableColumn>Route</TableColumn>
+                    {roomy && <TableColumn>Chain</TableColumn>}
                     <TableColumn id="usd" allowsSorting>{({ sortDirection }) => <SortLabel direction={sortDirection}>Amount</SortLabel>}</TableColumn>
                     <TableColumn id="status" allowsSorting>{({ sortDirection }) => <SortLabel direction={sortDirection}>Status</SortLabel>}</TableColumn>
+                    {roomy && <TableColumn>Payer</TableColumn>}
+                    {ultra && <TableColumn>Settled in</TableColumn>}
                     <TableColumn id="date" allowsSorting>{({ sortDirection }) => <SortLabel direction={sortDirection}>Date (UTC)</SortLabel>}</TableColumn>
                   </TableHeader>
                   <TableBody>
                     {rows.map((payment) => (
                       <TableRow key={payment.id} id={payment.id} className="cursor-pointer hover:bg-background-secondary-default">
                         <TableCell><Checkbox slot="selection" size="sm" /></TableCell>
-                        <TableCell><span className="block max-w-[220px] truncate text-body-medium text-text-primary" title={payment.sourceName}>{payment.sourceName}</span></TableCell>
+                        <TableCell><span className="block max-w-[220px] min-w-28 whitespace-normal text-body-medium text-text-primary">{payment.sourceName}</span></TableCell>
+                        {ultra && <TableCell><span dir="ltr" className="whitespace-nowrap text-caption-1-regular text-text-secondary tabular-nums">{payment.id}</span></TableCell>}
                         <TableCell>
                           <span className="flex items-center gap-2 whitespace-nowrap tabular-nums">
                             <TokenMark symbol={payment.payAsset} size="sm" />
@@ -273,8 +287,11 @@ export function PaymentsView() {
                             <span className="text-text-secondary">to {payment.receiveAsset}</span>
                           </span>
                         </TableCell>
+                        {roomy && <TableCell className="whitespace-nowrap">{ASSETS[payment.payAsset].chain}</TableCell>}
                         <TableCell className="whitespace-nowrap tabular-nums">{formatUsd(payment.usd)}</TableCell>
                         <TableCell><PaymentStatusChip status={payment.status} /></TableCell>
+                        {roomy && <TableCell><span dir="ltr" className="whitespace-nowrap tabular-nums">{shortAddress(payment.payer)}</span></TableCell>}
+                        {ultra && <TableCell className="whitespace-nowrap tabular-nums">{payment.settleSeconds === null ? <span className="text-text-secondary">Not settled</span> : formatSeconds(payment.settleSeconds)}</TableCell>}
                         <TableCell className="whitespace-nowrap tabular-nums">{formatRowDate(payment.createdAt)}</TableCell>
                       </TableRow>
                     ))}
@@ -288,8 +305,8 @@ export function PaymentsView() {
                     <button type="button" onClick={() => setOpenId(payment.id)} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg py-1.5 text-start outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
                       <TokenMark symbol={payment.payAsset} />
                       <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-body-medium">{payment.sourceName}</span>
-                        <span className="truncate text-caption-1-regular text-text-secondary tabular-nums">{formatToken(payment.payAmount, payment.payAsset)}, {formatRowDate(payment.createdAt)}</span>
+                        <span className="text-body-medium">{payment.sourceName}</span>
+                        <span className="text-caption-1-regular text-text-secondary tabular-nums">{formatToken(payment.payAmount, payment.payAsset)}, {formatRowDate(payment.createdAt)}</span>
                       </span>
                       <span className="flex shrink-0 flex-col items-end gap-0.5">
                         <span className="text-body-medium tabular-nums">{formatUsd(payment.usd)}</span>
@@ -301,15 +318,15 @@ export function PaymentsView() {
               </ul>
               )}
 
-              <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+              <div className="mt-auto flex flex-wrap items-center justify-between gap-2 px-1">
                 <p className="text-body-regular text-text-secondary tabular-nums">{formatCount(filtered.length)} payments</p>
-                <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} />
+                <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} className="w-auto min-w-80 flex-1" />
               </div>
             </>
           )}
         </Panel>
 
-        <div className="col-span-12 grid min-w-0 content-start gap-3 @2xl:grid-cols-2 @3xl:gap-4 @5xl:col-span-3 @5xl:grid-cols-1">
+        <div className="col-span-12 grid min-w-0 content-start gap-3 @2xl:grid-cols-2 @3xl:gap-4 @5xl:col-span-3 @5xl:grid-cols-1 @wide:col-start-10 @wide:row-start-2 @ultra:grid-cols-2">
           <Panel title="By status" className="gap-2">
             <ul className="flex flex-col gap-1">
               {STATUSES.map((id) => (

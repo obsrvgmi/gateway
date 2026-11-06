@@ -21,7 +21,7 @@ export function PageHeader({ title, description, meta, actions }: { title: React
     <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
       <div className="flex min-w-0 max-w-full flex-col gap-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h1 className="min-w-0 text-title-1-semibold tracking-[-0.02em] [overflow-wrap:anywhere]">{title}</h1>
+          <h1 className="dash-title min-w-0 [overflow-wrap:anywhere]">{title}</h1>
           {meta}
         </div>
         {description && <p className="max-w-[72ch] text-body-regular text-text-secondary">{description}</p>}
@@ -37,7 +37,7 @@ export function Panel({ id, title, description, actions, className, children }: 
       {title && (
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <div className="flex min-w-0 flex-col gap-0.5">
-            <h2 className="text-headline-semibold">{title}</h2>
+            <h2 className="dash-panel-title">{title}</h2>
             {description && <p className="text-body-regular text-text-secondary">{description}</p>}
           </div>
           {actions}
@@ -63,8 +63,8 @@ export function Stat({ label, value, note, href, className, children }: { label:
   const body = (
     <>
       <p className="truncate text-body-regular text-text-secondary">{label}</p>
-      <p className="truncate text-title-2-semibold tabular-nums">{value}</p>
-      {note && <p className="truncate text-caption-1-regular text-text-secondary">{note}</p>}
+      <p className="dash-figure truncate">{value}</p>
+      {note && <p className="text-caption-1-regular text-text-secondary">{note}</p>}
       {children}
     </>
   );
@@ -88,21 +88,35 @@ export function ModeTag({ className, children = "Test mode" }: { className?: str
   return mode === "live" ? null : <SimulatedTag className={className}>{children}</SimulatedTag>;
 }
 
+/** Same numbers as the @wide and @ultra container variants in globals.css. */
+export const MAIN_WIDE = 1600;
+export const MAIN_ULTRA = 2160;
+
+function mainWidth(main: HTMLElement | null) {
+  if (!main) return 0;
+  const { paddingLeft, paddingRight } = getComputedStyle(main);
+  return main.clientWidth - Number.parseFloat(paddingLeft) - Number.parseFloat(paddingRight);
+}
+
 /**
- * One layout is mounted at a time, not two toggled with CSS: token icons define SVG gradients by id,
- * and an id that resolves inside a display:none table paints nothing in the visible list.
+ * For choices CSS can't make, such as which columns a table has. Measured on <main>'s content box,
+ * the box container queries see. One layout is mounted at a time, not two toggled with CSS: token
+ * icons define SVG gradients by id, and an id that resolves inside a display:none table paints nothing.
  */
-export function useWideMain() {
-  const [wide, setWide] = useState(() => (document.getElementById("main")?.clientWidth ?? 0) >= 768);
+export function useMainAtLeast(width: number) {
+  const [reached, setReached] = useState(() => mainWidth(document.getElementById("main")) >= width);
   useEffect(() => {
     const main = document.getElementById("main");
     if (!main) return;
-    const observer = new ResizeObserver(() => setWide(main.clientWidth >= 768));
+    const observer = new ResizeObserver(() => setReached(mainWidth(main) >= width));
     observer.observe(main);
     return () => observer.disconnect();
-  }, []);
-  return wide;
+  }, [width]);
+  return reached;
 }
+
+/** Room for a table rather than a list: <main> on a tablet in portrait and up. */
+export const useWideMain = () => useMainAtLeast(720);
 
 /** Up is only good when the metric says so: faster settlement is a falling number. */
 export function DeltaChip({ delta, upIsGood = true }: { delta: Delta; upIsGood?: boolean }) {
@@ -119,11 +133,16 @@ export function DeltaChip({ delta, upIsGood = true }: { delta: Delta; upIsGood?:
 }
 
 const TILE_WIDE = ["@5xl:col-span-12", "@5xl:col-span-8", "@5xl:col-span-4"];
+const TILE_FOUR = ["@wide:col-span-12", "@wide:col-span-9", "@wide:col-span-6", "@wide:col-span-3"];
+const TILE_SIX = ["@ultra:col-span-12", "@ultra:col-span-10", "@ultra:col-span-8", "@ultra:col-span-6", "@ultra:col-span-4", "@ultra:col-span-2"];
 
-/** Fills whatever a card grid leaves empty on its last row, at two and three columns. */
+/** The card grid's spans: two columns, three, then four and six as the room grows. */
+export const CARD_SPANS = "col-span-12 @xl:col-span-6 @5xl:col-span-4 @wide:col-span-3 @ultra:col-span-2";
+
+/** Fills whatever a card grid leaves empty on its last row, at every column count of CARD_SPANS. */
 export function AddTile({ count, href, label, icon: Icon }: { count: number; href: string; label: string; icon: ComponentType<{ className?: string }> }) {
   return (
-    <Link href={href} className={cx("col-span-12 flex min-h-24 items-center justify-center gap-2 rounded-3xl border border-dashed border-border-button-hover text-body-medium text-text-secondary outline-none transition-colors duration-150 hover:bg-background-inner-default hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring", count % 2 ? "@xl:col-span-6" : "@xl:col-span-12", TILE_WIDE[count % 3])}>
+    <Link href={href} className={cx("col-span-12 flex min-h-24 items-center justify-center gap-2 rounded-3xl border border-dashed border-border-button-hover text-body-medium text-text-secondary outline-none transition-colors duration-150 hover:bg-background-inner-default hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring", count % 2 ? "@xl:col-span-6" : "@xl:col-span-12", TILE_WIDE[count % 3], TILE_FOUR[count % 4], TILE_SIX[count % 6])}>
       <Icon className="size-5" />
       {label}
     </Link>

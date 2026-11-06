@@ -1,40 +1,35 @@
 "use client";
 
-import { useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
+import { useRef, useState, type PointerEvent } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { RiArrowRightLine, RiLockLine } from "@remixicon/react";
-import { Radio as AriaRadio, RadioGroup as AriaRadioGroup } from "react-aria-components";
+import { RiArrowRightLine, RiExternalLinkLine, RiMoneyDollarCircleLine, RiQrCodeLine, RiTimerLine } from "@remixicon/react";
 import { TokenMark } from "@/components/brand/token-mark";
-import { CheckoutWidget } from "@/components/checkout/checkout-widget";
-import { NavButton } from "@/components/nav-button";
-import { ASSETS, RECEIVE_ASSETS } from "@/lib/assets";
-import { embedSnippet } from "@/lib/embed";
-import { formatToken } from "@/lib/format";
+import { ASSETS, quote } from "@/lib/assets";
+import { formatToken, formatUsd } from "@/lib/format";
 import { SITE } from "@/lib/site";
-import type { AssetSymbol, WidgetRadius } from "@/lib/types";
-import { cx } from "@/utils/cx";
+import type { AssetSymbol } from "@/lib/types";
+import { NavButton } from "@/components/nav-button";
 import { Bus } from "./bus";
+import { ReceivePicker, Scene, Segmented, type SceneFeature } from "./scene";
+import { WidgetScene } from "./widget-scene";
 
 const SERIAL = "lnk_8fk2m1";
 // What the mock shows and the QR encodes. `.example` is reserved, so it can never resolve to someone.
 const DISPLAY_LINK = `pay.gateway.example/${SERIAL}`;
-const DISPLAY_ORIGIN = "https://gateway.example";
-const NOTE_AMOUNT = 2400;
-const NOTE_RECEIVE: AssetSymbol = "USDC";
 const PAYERS: AssetSymbol[] = ["BTC", "ETH", "SOL", "USDT", "NEAR"];
-const MICROPRINT = `PAYMENT LINK ${SERIAL.toUpperCase()}  ANY ASSET IN ONE ASSET OUT  `.repeat(12);
-// Mid-tones only: each has to read on both the paper and the ink ground.
-const ACCENTS = [
-  { value: "#00EC97", name: "Green" },
-  { value: "#2563eb", name: "Blue" },
-  { value: "#7c3aed", name: "Violet" },
-  { value: "#db2777", name: "Pink" },
-  { value: "#ea580c", name: "Orange" },
+const MICROPRINT = `PAYMENT LINK ${SERIAL.toUpperCase()}  PAYABLE IN ANY SUPPORTED ASSET  `.repeat(12);
+
+const AMOUNTS = [250, 800, 2400];
+const PURPOSES = [
+  { value: "deposit", name: "Deposit", title: "Brand sprint deposit" },
+  { value: "invoice", name: "Invoice", title: "Invoice 1042" },
+  { value: "order", name: "Order", title: "Custom lamp order" },
 ];
-const RADII: { value: WidgetRadius; name: string }[] = [
-  { value: "rounded", name: "Round" },
-  { value: "soft", name: "Soft" },
-  { value: "sharp", name: "Sharp" },
+const FEATURES: SceneFeature[] = [
+  { icon: RiMoneyDollarCircleLine, title: "Any amount", body: "Set a price or let them choose." },
+  { icon: RiQrCodeLine, title: "QR code included", body: "For invoices, screens and in person." },
+  { icon: RiTimerLine, title: "Expiry dates", body: "Close a link when an offer ends." },
+  { icon: RiExternalLinkLine, title: "Thank you page", body: "Send customers on after they pay." },
 ];
 
 export function Products() {
@@ -42,67 +37,65 @@ export function Products() {
     <div id="products" className="scenes">
       <Bus span={2400} delay={-2.4} className="bus-spine" />
       <span aria-hidden className="scenes-seam"><span className="scenes-port"><span className="stage-socket is-main" /></span></span>
-
-      <Scene
-        id="links"
-        title="Send a link."
-        body="Set an amount and share a URL or QR code. It opens a hosted checkout your customer can pay from any chain."
-        cta="Create a link"
-        href="/dashboard/links/new"
-      >
-        <LinkPlate />
-      </Scene>
-
-      <Scene
-        id="widgets"
-        title="Or embed the checkout."
-        body="Match it to your brand, copy the embed code, and it sits on your own page. The one below is live: change it."
-        cta="Build a widget"
-        href="/dashboard/widgets/new"
-        flip
-      >
-        <WidgetPlate />
-      </Scene>
+      <LinkScene />
+      <WidgetScene />
     </div>
   );
 }
 
-/** Heading and body sit either side of the axis and swap between scenes, the way the hero's headline does. */
-function Scene({ id, title, body, cta, href, flip = false, children }: { id: string; title: string; body: string; cta: string; href: string; flip?: boolean; children: ReactNode }) {
+function LinkScene() {
+  const [amount, setAmount] = useState(2400);
+  const [purpose, setPurpose] = useState(PURPOSES[0]);
+  const [receive, setReceive] = useState<AssetSymbol>("USDC");
+
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className={cx("scene", flip && "is-flipped")}>
-      <div className="scene-head">
-        <h2 id={`${id}-title`} className="scene-title">{title}</h2>
-        <div className="scene-side">
-          <p className="scene-body">{body}</p>
-          <NavButton href={href} trailingIcon={RiArrowRightLine} className="scene-cta">{cta}</NavButton>
+    <Scene
+      id="links"
+      title={<>Send a link.<br /> Get paid.</>}
+      body="No website needed. Create a payment link in seconds and share it with anyone."
+      cta="Create a link"
+      href="/dashboard/links/new"
+      demo={
+        <div className="chat">
+          <div className="browser-bar"><span className="browser-url">Message to your client</span></div>
+          <div className="chat-thread">
+            <p className="chat-bubble is-out">Here&apos;s the link for the {purpose.name.toLowerCase()}.</p>
+            <div className="note-mount"><PaymentNote amount={amount} title={purpose.title} receive={receive} /></div>
+            <p className="chat-bubble">Paid with SOL. Thanks!</p>
+          </div>
         </div>
-      </div>
-      {children}
-      <Bus span={96} delay={-1.6} className="bus-stub" />
-    </section>
-  );
-}
-
-function PlatePorts() {
-  return (
-    <>
-      <span aria-hidden className="plate-port is-top"><span className="stage-socket is-main" /></span>
-      <span aria-hidden className="plate-port is-bottom"><span className="stage-socket is-main" /></span>
-    </>
-  );
-}
-
-function LinkPlate() {
-  return (
-    <div className="stage-plate scene-plate reveal">
-      <PlatePorts />
-      <div className="note-mount"><PaymentNote /></div>
-      <div className="tray">
-        <span dir="ltr" className="tray-url">{DISPLAY_LINK}</span>
-        <NavButton href="/login?new=1" variant="secondary" trailingIcon={RiArrowRightLine} className="tray-action">Make your own</NavButton>
-      </div>
-    </div>
+      }
+      features={FEATURES}
+      steps={[
+        {
+          title: "Set the amount",
+          body: "Try it. The link changes as you do.",
+          children: (
+            <div className="tune">
+              <span>Amount</span>
+              <Segmented label="Amount" value={String(amount)} options={AMOUNTS.map((value) => ({ value: String(value), name: formatUsd(value).replace(".00", "") }))} onChange={(value) => setAmount(Number(value))} />
+              <span>For</span>
+              <Segmented label="What it's for" value={purpose.value} options={PURPOSES} onChange={(value) => setPurpose(PURPOSES.find((item) => item.value === value) ?? PURPOSES[0])} />
+            </div>
+          ),
+        },
+        {
+          title: "Share it anywhere",
+          body: "Send it in a chat or email, or show the QR code.",
+          children: (
+            <div className="tray">
+              <span dir="ltr" className="tray-url">{DISPLAY_LINK}</span>
+              <NavButton href="/login?new=1" variant="secondary" trailingIcon={RiArrowRightLine} className="tray-action">Make your own</NavButton>
+            </div>
+          ),
+        },
+        {
+          title: "Get paid your way",
+          body: "Customers pay with any crypto. You receive:",
+          children: <ReceivePicker value={receive} onChange={setReceive} />,
+        },
+      ]}
+    />
   );
 }
 
@@ -111,7 +104,8 @@ function LinkPlate() {
  * scopes its tokens. The rosettes turn with scroll and the foil and tilt follow the pointer; the
  * pointer values are written straight to CSS variables so moving over it never renders React.
  */
-function PaymentNote() {
+function PaymentNote({ amount, title, receive }: { amount: number; title: string; receive: AssetSymbol }) {
+  const [whole, cents] = formatUsd(amount).split(".");
   const note = useRef<HTMLDivElement>(null);
   const frame = useRef(0);
 
@@ -144,9 +138,9 @@ function PaymentNote() {
       <div className="note-body">
         <div className="note-who">
           <p className="note-merchant">{SITE.merchant}</p>
-          <p className="note-title">Brand sprint deposit</p>
+          <p className="note-title">{title}</p>
         </div>
-        <p className="note-amount"><span>$2,400</span><span className="note-cents">.00</span></p>
+        <p className="note-amount"><span>{whole}</span><span className="note-cents">.{cents}</span></p>
         <div className="note-terms">
           <p className="note-pay">
             <span className="note-tokens">
@@ -154,7 +148,7 @@ function PaymentNote() {
             </span>
             Payable in any supported asset
           </p>
-          <p className="note-settle">Settles as {formatToken(NOTE_AMOUNT, NOTE_RECEIVE)} on {ASSETS[NOTE_RECEIVE].chain}</p>
+          <p className="note-settle">Settles as {formatToken(quote(amount, receive, receive).receiveAmount, receive)} on {ASSETS[receive].chain}</p>
         </div>
       </div>
 
@@ -170,93 +164,6 @@ function PaymentNote() {
 
       <span className="note-stamp">Specimen</span>
       <p aria-hidden className="note-micro">{MICROPRINT}</p>
-    </div>
-  );
-}
-
-function WidgetPlate() {
-  const [accent, setAccent] = useState(ACCENTS[0].value);
-  const [radius, setRadius] = useState<WidgetRadius>("rounded");
-  const [receive, setReceive] = useState<AssetSymbol>("USDC");
-
-  return (
-    <div className="stage-plate scene-plate console reveal" style={{ "--brand": accent } as CSSProperties}>
-      <PlatePorts />
-      <div className="console-controls">
-        <Control label="Accent">
-          <AriaRadioGroup aria-label="Widget colour" value={accent} onChange={setAccent} orientation="horizontal" className="swatches">
-            {ACCENTS.map((item) => (
-              <AriaRadio key={item.value} value={item.value} aria-label={item.name} className={({ isSelected, isFocusVisible }) => cx("swatch", isSelected && "is-selected", isFocusVisible && "is-focus")}>
-                <span style={{ background: item.value }} />
-              </AriaRadio>
-            ))}
-          </AriaRadioGroup>
-        </Control>
-        <Control label="Corners">
-          <AriaRadioGroup aria-label="Widget corners" value={radius} onChange={(value) => setRadius(value as WidgetRadius)} orientation="horizontal" className="segments">
-            {RADII.map((item) => (
-              <AriaRadio key={item.value} value={item.value} className={({ isSelected, isFocusVisible }) => cx("segment", isSelected && "is-selected", isFocusVisible && "is-focus")}>
-                {item.name}
-              </AriaRadio>
-            ))}
-          </AriaRadioGroup>
-        </Control>
-        <Control label="Get paid in">
-          <AriaRadioGroup aria-label="Asset you get paid in" value={receive} onChange={(value) => setReceive(value as AssetSymbol)} orientation="horizontal" className="segments">
-            {RECEIVE_ASSETS.map((asset) => (
-              <AriaRadio key={asset.symbol} value={asset.symbol} className={({ isSelected, isFocusVisible }) => cx("segment segment-asset", isSelected && "is-selected", isFocusVisible && "is-focus")}>
-                <TokenMark symbol={asset.symbol} size="xs" />{asset.symbol}
-              </AriaRadio>
-            ))}
-          </AriaRadioGroup>
-        </Control>
-        <span aria-hidden className="stage-rule console-rule" />
-        <div className="console-embed">
-          <p className="stage-caption">Embed</p>
-          <pre dir="ltr" className="console-code"><code>{embedSnippet(DISPLAY_ORIGIN, "wgt_lumen", "html", { accent, radius, receiveAsset: receive, buttonLabel: "Buy print" })}</code></pre>
-          <p className="text-caption-1-regular text-text-secondary">Live preview with illustrative prices. No funds move here.</p>
-        </div>
-      </div>
-
-      <div className="shop">
-        <div className="shop-bar">
-          <span aria-hidden className="shop-lights"><i /><i /><i /></span>
-          <span className="shop-url"><RiLockLine className="size-3" aria-hidden />lumen.studio/print</span>
-        </div>
-        <div className="shop-page">
-          <div className="shop-product">
-            <div className="shop-wall">
-              <span aria-hidden className="shop-print"><i /></span>
-            </div>
-            <div className="shop-caption">
-              <p className="truncate text-body-semibold text-text-primary">Rosette print, A2</p>
-              <p className="truncate text-caption-1-regular text-text-secondary">Edition of 200</p>
-            </div>
-          </div>
-          <CheckoutWidget
-            merchant={SITE.merchant}
-            title="Rosette print, A2"
-            amount={79}
-            receiveAsset={receive}
-            payAsset="ETH"
-            showAssetPicker={false}
-            showBranding={false}
-            accent={accent}
-            radius={radius}
-            buttonLabel="Buy print"
-            className="shop-widget"
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Control({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="console-control">
-      <p className="stage-caption">{label}</p>
-      {children}
     </div>
   );
 }

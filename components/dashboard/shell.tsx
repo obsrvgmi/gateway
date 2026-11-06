@@ -48,7 +48,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       {navArmed && (
         <Drawer isOpen={open} onOpenChange={setOpen} placement="start" size="sm" aria-label="Navigation" className="p-0">
           <Suspense>
-            <AppSidebar onNavigate={() => setOpen(false)} className="w-full" />
+            <AppSidebar onNavigate={() => setOpen(false)} className="[--rail-width:100%]" />
           </Suspense>
         </Drawer>
       )}
@@ -63,7 +63,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         <Suspense fallback={<div className="dash-bar" />}>
           <TopBar onOpenNavigation={() => setOpen(true)} railToggle={<Button variant="ghost" iconOnly leadingIcon={RiSideBarLine} aria-label={collapsed ? "Show sidebar" : "Hide sidebar"} aria-pressed={collapsed} onClick={toggleRail} className="-ms-1 hidden lg:inline-flex" />} />
         </Suspense>
-        <main id="main" tabIndex={-1} className="@container mx-auto w-full max-w-[1520px] min-w-0 flex-1 px-3 py-4 outline-none sm:px-5 lg:py-5">
+        <main id="main" tabIndex={-1} className="@container mx-auto w-full max-w-[calc(var(--dash-max)+2.5rem)] min-w-0 flex-1 px-3 py-4 outline-none sm:px-5 lg:py-5">
           <div className="flex flex-col gap-4">
             {paymentsTruncated && <p role="status" className="dash-well rounded-xl p-2.5 text-body-regular text-text-secondary">Charts and totals here cover your newest 10,000 payments. Older ones are in your statements and the API.</p>}
             {ready ? children : <PageSkeleton />}

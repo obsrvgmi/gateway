@@ -41,8 +41,8 @@ function setupSteps({ links, widgets, payments, settings, settlement }: GatewayS
 
 function Kpi({ label, value, delta, upIsGood, trend, trendLabel, href }: { label: string; value: string; delta: Parameters<typeof DeltaChip>[0]["delta"]; upIsGood?: boolean; trend: number[]; trendLabel: string; href: string }) {
   return (
-    <Stat label={label} value={value} href={href}>
-      <div className="flex items-center justify-between gap-2">
+    <Stat label={label} value={value} href={href} className="@ultra:col-span-1">
+      <div className="mt-auto flex items-center justify-between gap-2">
         <DeltaChip delta={delta} upIsGood={upIsGood} />
         <Sparkline values={trend} label={trendLabel} className="w-16 min-w-0" />
       </div>
@@ -70,8 +70,8 @@ function Attention({ items }: { items: AttentionItem[] }) {
                 <Link href={item.href} className="flex items-center gap-2.5 rounded-xl p-1.5 outline-none hover:bg-background-secondary-default focus-visible:ring-2 focus-visible:ring-border-focus-ring">
                   <span className={cx("flex size-8 shrink-0 items-center justify-center rounded-lg", className)}><Icon className="size-4.5" aria-hidden /></span>
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-body-medium">{item.title}</span>
-                    <span className="truncate text-caption-1-regular text-text-secondary">{item.detail}</span>
+                    <span className="text-body-medium">{item.title}</span>
+                    <span className="text-caption-1-regular text-text-secondary">{item.detail}</span>
                   </span>
                   <RiArrowRightSLine className="size-4 shrink-0 text-foreground-icon-tertiary rtl:rotate-180" aria-hidden />
                 </Link>
@@ -97,14 +97,14 @@ function LiveFeed({ payments, now, onOpen }: { payments: Payment[]; now: number;
       className="min-h-[320px] flex-1 gap-3"
     >
       <div className="relative min-h-0 flex-1">
-        <ul className="absolute inset-0 flex flex-col divide-y divide-separator-border overflow-y-auto">
+        <ul className="absolute inset-0 flex flex-col divide-y divide-separator-border overflow-y-auto pb-6 mask-b-from-[calc(100%-1.5rem)]">
           {recent.map((payment) => (
             <li key={payment.id} className={cx(!initial.has(payment.id) && "dash-enter")}>
               <button type="button" onClick={() => onOpen(payment.id)} className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg py-2 text-start outline-none hover:bg-background-secondary-default focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-border-focus-ring">
                 <span className={cx("shrink-0", payment.status === "processing" && "dash-pulse")}><TokenMark symbol={payment.payAsset} /></span>
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-body-medium">{payment.sourceName}</span>
-                  <span className="truncate text-caption-1-regular text-text-secondary tabular-nums">{formatToken(payment.payAmount, payment.payAsset)}, {relativeTime(payment.createdAt, now)}</span>
+                  <span className="text-body-medium">{payment.sourceName}</span>
+                  <span className="text-caption-1-regular text-text-secondary tabular-nums">{formatToken(payment.payAmount, payment.payAsset)}, {relativeTime(payment.createdAt, now)}</span>
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-0.5">
                   <span className="text-body-medium tabular-nums">{formatUsd(payment.usd)}</span>
@@ -240,8 +240,8 @@ export function OverviewView() {
         </Panel>
       )}
       <PositionStrip />
-      <Bento className="grid-flow-row-dense">
-        <Panel className="col-span-12 @5xl:col-span-8">
+      <Bento className="grid-flow-row-dense @ultra:grid-rows-[auto_1fr]">
+        <Panel className="col-span-12 @5xl:col-span-8 @ultra:col-span-6 @ultra:row-span-2">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1">
               <h2 className="text-body-regular text-text-secondary">{metric === "volume" ? "Settled volume" : "Settled payments"}, {rangeLong}</h2>
@@ -296,15 +296,17 @@ export function OverviewView() {
           )}
         </Panel>
 
-        <div className="col-span-12 flex min-w-0 flex-col gap-3 @3xl:gap-4 @5xl:col-span-4">
+        <div className="col-span-12 flex min-w-0 flex-col gap-3 @3xl:gap-4 @5xl:col-span-4 @ultra:col-span-3 @ultra:col-start-10 @ultra:row-span-2 @ultra:row-start-1">
           <Attention items={attention} />
           <LiveFeed payments={payments} now={now} onOpen={setOpenId} />
         </div>
 
+        <div className="contents @ultra:col-span-3 @ultra:col-start-7 @ultra:row-start-1 @ultra:grid @ultra:grid-cols-2 @ultra:gap-4">
         <Kpi label="Settled payments" value={formatCount(summary.count)} delta={percentDelta(summary.count, previous.count)} trend={complete.map((b) => b.current.count)} trendLabel="Settled payments trend" href={`/dashboard/payments?status=settled&${inRange}`} />
         <Kpi label="Success rate" value={formatPercent(summary.successRate)} delta={pointDelta(summary.successRate, previous.successRate)} trend={complete.map((b) => b.current.successRate ?? 0)} trendLabel="Success rate trend" href={`/dashboard/payments?status=expired&${inRange}`} />
         <Kpi label="Avg settlement" value={formatSeconds(summary.avgSettle)} delta={secondsDelta(summary.avgSettle, previous.avgSettle)} upIsGood={false} trend={complete.map((b) => b.current.avgSettle ?? 0)} trendLabel="Average settlement trend" href={`/dashboard/payments?status=settled&${inRange}`} />
         <Kpi label="Customer route fees" value={formatUsd(summary.fees)} delta={percentDelta(summary.fees, previous.fees)} upIsGood={false} trend={complete.map((b) => b.current.fees)} trendLabel="Route fee trend" href={`/dashboard/payments?status=settled&${inRange}`} />
+        </div>
 
         {!wide && (
           <div className="col-span-12 flex justify-center">
@@ -312,10 +314,10 @@ export function OverviewView() {
           </div>
         )}
         {(wide || showMore) && <>
-        <Panel title="Any asset in, your asset out" description="Where settled volume came from and what it became. Select an asset to see its payments." className="col-span-12 @5xl:col-span-7">
+        <Panel title="Any asset in, your asset out" description="Where settled volume came from and what it became. Select an asset to see its payments." className="col-span-12 @5xl:col-span-7 @wide:col-span-6 @wide:row-span-2 @ultra:col-span-5 @ultra:row-span-1">
           {flows.length ? <RouteFlow flows={flows} pay={assets} receive={receive} hrefFor={(asset) => `/dashboard/payments?asset=${asset}&${inRange}`} /> : <NoData>No settled payments in this range.</NoData>}
         </Panel>
-        <Panel title="Paid with" description={`${assets.length} assets across ${chains.length} chains`} className="col-span-12 @2xl:col-span-6 @5xl:col-span-5">
+        <Panel title="Paid with" description={`${assets.length} assets across ${chains.length} chains`} className="col-span-12 @2xl:col-span-6 @5xl:col-span-5 @wide:col-span-3 @wide:row-span-2 @ultra:row-span-1">
           {assets.length ? (
             <>
               <SegmentBar label="Paid-with share of volume" parts={assets.map((a) => ({ key: a.key, share: a.share, color: assetColor(a.key), name: ASSETS[a.key].name, darkInk: assetDarkInk(a.key) }))} />
@@ -324,7 +326,7 @@ export function OverviewView() {
           ) : <NoData>No settled payments in this range.</NoData>}
         </Panel>
 
-        <Panel title="Top earners" description={`By settled volume, ${rangeLong}, against the prior period`} actions={<PanelLink href="/dashboard/links">All links</PanelLink>} className="col-span-12 @5xl:col-span-7">
+        <Panel title="Top earners" description={`By settled volume, ${rangeLong}, against the prior period`} actions={<PanelLink href="/dashboard/links">All links</PanelLink>} className="col-span-12 @5xl:col-span-7 @wide:order-1 @wide:col-span-5 @ultra:order-none @ultra:col-span-4">
           {leaders.length ? (
             <ol className="flex flex-col divide-y divide-separator-border">
               {leaders.map((leader, index) => (
@@ -344,22 +346,22 @@ export function OverviewView() {
             </ol>
           ) : <NoData>No settled payments in this range.</NoData>}
         </Panel>
-        <Panel title="Settlement speed" description="Quote to wallet" className="col-span-12 @2xl:col-span-6 @5xl:col-span-5">
+        <Panel title="Settlement speed" description="Quote to wallet" className="col-span-12 @2xl:col-span-6 @5xl:col-span-5 @wide:order-1 @wide:col-span-4 @ultra:order-none @ultra:col-span-3 @ultra:col-start-7 @ultra:row-start-2">
           <dl className="grid grid-cols-3 gap-2">
             {[["Median", summary.avgSettle === null ? "No data" : `${summary.p50}s`], ["95th percentile", summary.avgSettle === null ? "No data" : `${summary.p95}s`], ["Slowest asset", slowest[0] ? `${slowest[0].asset}, ${slowest[0].average.toFixed(0)}s` : "No data"]].map(([label, value]) => (
               <div key={label} className="flex min-w-0 flex-col rounded-xl bg-background-secondary-default p-2.5">
-                <dt className="truncate text-caption-1-regular text-text-secondary">{label}</dt>
-                <dd className="truncate text-body-semibold">{value}</dd>
+                <dt className="text-caption-1-regular text-text-secondary">{label}</dt>
+                <dd className="text-body-semibold">{value}</dd>
               </div>
             ))}
           </dl>
           <Histogram bins={histogram} />
         </Panel>
 
-        <Panel title="Chains" description="Settled volume by source chain" className="col-span-12 @2xl:col-span-6 @5xl:col-span-4">
+        <Panel title="Chains" description="Settled volume by source chain" className="col-span-12 @2xl:col-span-6 @5xl:col-span-4 @wide:col-span-3 @wide:col-start-10 @ultra:col-span-4 @ultra:col-start-auto">
           {chains.length ? <RankBars rows={chains.slice(0, 5).map((c) => ({ key: c.key, label: c.key, value: `${formatCompactUsd(c.volume)}, ${formatPercent(c.share, 0)}`, share: c.share, href: `/dashboard/payments?chain=${encodeURIComponent(c.key)}&${inRange}` }))} /> : <NoData>No settled payments in this range.</NoData>}
         </Panel>
-        <Panel title="Links and widgets" description="Which product brings in the money" actions={<PanelLink href={`/dashboard/payments?${inRange}`}>Payments</PanelLink>} className="col-span-12 @2xl:col-span-6 @5xl:col-span-4">
+        <Panel title="Links and widgets" description="Which product brings in the money" actions={<PanelLink href={`/dashboard/payments?${inRange}`}>Payments</PanelLink>} className="col-span-12 @2xl:col-span-6 @5xl:col-span-4 @wide:col-span-3 @wide:col-start-10 @ultra:col-span-4 @ultra:col-start-auto">
           <SegmentBar label="Volume by product" parts={[{ key: "link", share: linkShare?.share ?? 0, color: "var(--viz-primary)", name: "Payment links", darkInk: true }, { key: "widget", share: widgetShare?.share ?? 0, color: "var(--viz-ETH)", name: "Widgets" }]} />
           <dl className="grid grid-cols-2 gap-2">
             {[["Payment links", linkShare, links.filter((l) => l.status === "active").length, "active", "link"], ["Widgets", widgetShare, widgets.filter((w) => w.status === "live").length, "live", "widget"]].map(([label, share, live, word, type]) => (
@@ -371,7 +373,7 @@ export function OverviewView() {
             ))}
           </dl>
         </Panel>
-        <Panel title="When customers pay" description={grid.max ? `Busiest: ${grid.weekdays[grid.peak.day]} around ${String(grid.peak.block * 3).padStart(2, "0")}:00 UTC` : "No settled payments in this range"} className="col-span-12 @5xl:col-span-4">
+        <Panel title="When customers pay" description={grid.max ? `Busiest: ${grid.weekdays[grid.peak.day]} around ${String(grid.peak.block * 3).padStart(2, "0")}:00 UTC` : "No settled payments in this range"} className="col-span-12 @5xl:col-span-4 @wide:order-1 @wide:col-span-3 @ultra:order-none @ultra:col-span-4">
           <Heatmap cells={grid.cells} weekdays={grid.weekdays} max={grid.max} />
         </Panel>
         </>}

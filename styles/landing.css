@@ -290,13 +290,13 @@ html:has(.site) { scroll-padding-top: 5.5rem; }
 .plate-port.is-bottom { top: 100%; }
 
 .bus { position: absolute; left: 50%; display: block; width: 14px; margin-left: -7px; pointer-events: none; content-visibility: auto; }
+.bus-stub { position: relative; left: auto; display: block; height: 3.5rem; margin: 0.5rem auto -0.5rem; }
+.scene:last-child .bus-stub { display: none; }
 .bus svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .bus .flow-edge { transform: translateX(1px); }
 .bus-spine .flow-lit { stroke-dasharray: 1 1; stroke-dashoffset: 1; opacity: 0.9; }
 .foot-bus .flow-lit { opacity: 0.9; }
 .bus-spine { display: none; top: 0; bottom: 0; z-index: -1; }
-.bus-stub { position: relative; left: auto; display: block; height: 3.5rem; margin: 0.5rem auto -0.5rem; }
-.scene:last-child .bus-stub { display: none; }
 
 .scene {
   position: relative;
@@ -318,9 +318,9 @@ html:has(.site) { scroll-padding-top: 5.5rem; }
   text-wrap: balance;
   color: var(--color-text-primary);
 }
+.scene-body { max-width: 40ch; font-size: 1.1875rem; line-height: 1.5; letter-spacing: -0.012em; color: var(--color-text-secondary); text-wrap: pretty; }
 .scene-side { display: flex; flex-direction: column; align-items: flex-start; gap: 1.25rem; }
-.scene-body { max-width: 40ch; font-size: 1.0625rem; line-height: 1.55; color: var(--color-text-secondary); text-wrap: pretty; }
-.scene-cta { height: 2.75rem; padding-inline: 0.75rem; border-radius: 0.8125rem; }
+.scene-cta { height: 3.25rem; gap: 0.375rem; padding-inline: 1.25rem 1rem; border-radius: 0.9375rem; font-size: 1rem; font-weight: 600; letter-spacing: -0.011em; }
 .scene-plate { padding: 0.625rem; border-radius: 1.75rem; --plate-radius: 1.75rem; gap: 0.625rem; }
 
 @media (min-width: 1100px) {
@@ -328,8 +328,8 @@ html:has(.site) { scroll-padding-top: 5.5rem; }
   .bus-stub { display: none; }
   .plate-port { display: flex; }
   .scene { gap: clamp(2rem, 4vh, 3rem); }
-  .scene + .scene { padding-top: var(--scene-gap); }
   .scene-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2rem; align-items: end; }
+  .scene + .scene { padding-top: var(--scene-gap); }
   .scene-side { flex-direction: row; align-items: flex-end; justify-content: flex-end; gap: 1.75rem; }
   .scene-body { max-width: 36ch; text-align: end; }
   .scene-cta { flex: none; }
@@ -515,10 +515,10 @@ html:has(.site) { scroll-padding-top: 5.5rem; }
   color: rgb(0 236 151 / 0.72);
 }
 
-@container (min-width: 44rem) {
+@container (min-width: 28rem) {
   .note-art { --art-x: 83.75%; --art-y: 50%; }
-  .note-body { grid-area: 1 / 1; min-height: 37.5cqi; padding: 6cqi 5cqi 5.5cqi; justify-content: space-between; gap: 2cqi; }
-  .note-amount { font-size: 11.6cqi; }
+  .note-body { grid-area: 1 / 1; min-height: 40cqi; padding: 5.5cqi 5cqi 7.5cqi; justify-content: space-between; gap: 1.5cqi; }
+  .note-amount { font-size: 10.6cqi; }
   .note-merchant { font-size: clamp(0.875rem, 1.3cqi, 1.125rem); line-height: 1.4; }
   .note-title { font-size: clamp(1.0625rem, 1.9cqi, 1.625rem); line-height: 1.3; }
   .note-terms { font-size: clamp(0.875rem, 1.25cqi, 1.0625rem); line-height: 1.4; }
@@ -531,134 +531,171 @@ html:has(.site) { scroll-padding-top: 5.5rem; }
   .note-stamp { top: 6.2cqi; right: auto; left: 50cqi; font-size: clamp(0.8125rem, 1.25cqi, 1.0625rem); line-height: 1.5; }
 }
 
-.tray { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.5rem; padding: 0.125rem; }
+/* One milled bar with the buttons seated in it, so the field and its actions are one object. */
+.tray { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; border-radius: 1rem; padding: 0.3125rem; background: var(--stage-well); box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--stage-edge), 0 1px 0 var(--stage-sheen); }
 .tray-url {
-  grid-column: 1 / -1;
   display: block;
+  min-width: 0;
+  flex: 1 1 100%;
   overflow: hidden;
-  border-radius: 0.75rem;
-  padding: 0.5625rem 0.875rem;
+  border-radius: 0.625rem;
+  padding: 0.5rem 0.625rem;
   outline: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.25rem;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--color-text-primary);
-  background: var(--stage-well);
-  box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--stage-edge), 0 1px 0 var(--stage-sheen);
-  transition: color 140ms ease;
 }
-.tray-url:hover { text-decoration: underline; text-underline-offset: 0.2em; }
-.tray-action { height: 2.5rem; border-radius: 0.75rem; }
+a.tray-url:hover { text-decoration: underline; text-underline-offset: 0.2em; }
+a.tray-url:focus-visible { outline: 2px solid var(--color-border-focus-ring); }
+.tray-action { height: 2.625rem; flex: 1 1 0; padding-inline: 0.875rem; border-radius: 0.75rem; font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.008em; white-space: nowrap; }
 @media (min-width: 640px) {
-  .tray { grid-template-columns: minmax(0, 1fr) auto auto; }
-  .tray-url { grid-column: auto; }
+  .tray { flex-wrap: nowrap; }
+  .tray-url { flex: 1 1 0; }
+  .tray-action { flex: none; }
 }
 
-/* ----- The console: controls beside a real page -------------------------------- */
-.console { display: grid; grid-template-columns: minmax(0, 1fr); }
-.console-controls { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; padding: 0.625rem 0.5rem 0.5rem; }
-.console-control { display: flex; flex-direction: column; gap: 0.5rem; }
-.console-rule { display: none; }
-.console-embed { display: none; flex-direction: column; gap: 0.5rem; }
-.console-code {
-  overflow: hidden;
-  border-radius: 0.75rem;
-  padding: 0.75rem;
-  white-space: pre;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.6875rem;
-  line-height: 1.125rem;
-  color: var(--color-text-secondary);
-  background: var(--stage-well);
-  box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--stage-edge);
-}
+/* ----- The product template ------------------------------------------------------
+ * Both products share one layout and one height: how it works beside the live
+ * product, then what you get. The columns split on the page's axis, so the plate's
+ * ports land on the seam. The second scene mirrors the first, as its head does.
+ * --------------------------------------------------------------------------- */
+.product { display: grid; grid-template-columns: minmax(0, 1fr); }
+.product-demo { display: flex; min-width: 0; flex-direction: column; }
+.product-how { display: flex; min-width: 0; flex-direction: column; gap: 1rem; padding: 0.75rem 0.5rem 0.5rem; }
+.product-label { display: flex; align-items: center; gap: 0.75rem; font-size: 0.75rem; line-height: 1rem; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase; color: var(--color-text-accent); }
+.product-label::after { content: ""; flex: 1; height: 3px; border-block: 1px solid var(--plate-line); opacity: 0.8; }
 
-.swatches { display: flex; align-items: center; gap: 0.5rem; }
-.swatch {
-  position: relative;
+.steps { display: flex; flex: 1; flex-direction: column; }
+.step { position: relative; display: flex; flex: 1 1 auto; gap: 0.875rem; padding-bottom: 1.25rem; }
+.step:last-child { flex: none; padding-bottom: 0; }
+.step:not(:last-child)::before { content: ""; position: absolute; top: 2.5rem; bottom: 0.5rem; inset-inline-start: calc(1rem - 1.5px); width: 3px; border-inline: 1px solid var(--plate-line); }
+/* Struck from the same stock as the primary button. */
+.step-number {
   display: flex;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  cursor: pointer;
-  outline: none;
-  background: var(--socket-metal);
-  box-shadow: 0 0 0 0.5px var(--stage-edge), 0 1px 2px rgb(0 0 0 / 0.22);
-  transition: box-shadow 180ms ease, translate 180ms var(--ease-out);
+  font-size: 0.875rem;
+  line-height: 1;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-on-accent);
+  background: var(--gradient-button-primary-default);
+  box-shadow: inset 0 1px 0 var(--button-catchlight), inset 0 -1px 0 var(--button-lip), 0 0 0 1px color-mix(in srgb, var(--color-accent-700) 86%, black), 0 0 0 4px var(--stage-well), 0 2px 6px -1px var(--button-contact);
 }
-.swatch span { width: calc(100% - 6px); height: calc(100% - 6px); border-radius: 999px; box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.4), inset 0 -1px 0 rgb(255 255 255 / 0.25); transition: box-shadow 180ms ease; }
+.step-body { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.step-body h3 { font-size: 1.375rem; line-height: 2rem; font-weight: 620; letter-spacing: -0.022em; color: var(--color-text-primary); }
+.step-body > p { font-size: 1rem; line-height: 1.5rem; letter-spacing: -0.006em; color: var(--color-text-secondary); text-wrap: pretty; }
+.step-control { margin-top: 0.875rem; }
+
+.tune { display: grid; grid-template-columns: 4.25rem minmax(0, 1fr); align-items: center; gap: 0.625rem 0.75rem; }
+.tune > span { font-size: 0.875rem; line-height: 1.25rem; font-weight: 550; color: var(--color-text-primary); }
+
+.swatches { display: flex; align-items: center; gap: 0.625rem; }
+.swatch { display: flex; width: 2rem; height: 2rem; align-items: center; justify-content: center; border-radius: 999px; cursor: pointer; outline: none; background: var(--socket-metal); box-shadow: 0 0 0 0.5px var(--stage-edge), 0 1px 2px rgb(0 0 0 / 0.22); transition: box-shadow 180ms ease, translate 180ms var(--ease-out); }
+.swatch span { width: calc(100% - 6px); height: calc(100% - 6px); border-radius: 999px; box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.45), inset 0 -2px 3px rgb(0 0 0 / 0.22); }
 .swatch:hover { translate: 0 -1px; }
-.swatch.is-selected { box-shadow: 0 0 0 2px var(--stage-surface), 0 0 0 3.5px var(--color-text-primary), 0 1px 2px rgb(0 0 0 / 0.22); }
-.swatch.is-focus, .segment.is-focus { outline: 2px solid var(--color-border-focus-ring); outline-offset: 3px; }
+.swatch.is-selected { box-shadow: 0 0 0 2px var(--stage-surface), 0 0 0 3.5px var(--color-text-primary), 0 3px 6px -1px rgb(0 0 0 / 0.3); }
+.swatch.is-focus { outline: 2px solid var(--color-border-focus-ring); outline-offset: 5px; }
 
-.segments { display: inline-flex; gap: 0.125rem; align-self: flex-start; border-radius: 0.75rem; padding: 0.1875rem; background: var(--stage-well); box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--stage-edge), 0 1px 0 var(--stage-sheen); }
-.segment { border-radius: 0.5625rem; padding: 0.3125rem 0.75rem; cursor: pointer; outline: none; font-size: 0.8125rem; line-height: 1.25rem; font-weight: 500; color: var(--color-text-secondary); transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease; }
-.segment:hover { color: var(--color-text-primary); }
-.segment-asset { display: inline-flex; align-items: center; gap: 0.25rem; padding-inline: 0.3125rem 0.4375rem; font-size: 0.75rem; }
-.segment.is-selected { background: var(--stage-surface); color: var(--color-text-primary); box-shadow: inset 0 1px 0 var(--stage-sheen), 0 0 0 1px var(--stage-edge), 0 1px 2px rgb(0 0 0 / 0.14); }
+.product-features { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 1rem; border-radius: 1.125rem; padding: 1rem 1.25rem 1.25rem; background: var(--stage-well); box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--stage-edge), 0 1px 0 var(--stage-sheen); }
+.features { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.feature { display: flex; min-width: 0; align-items: center; gap: 0.75rem; }
+.feature > svg { width: 2.75rem; height: 2.75rem; flex: none; border-radius: 0.8125rem; padding: 0.6875rem; color: var(--color-text-accent); background: var(--stage-surface); box-shadow: inset 0 1px 0 var(--stage-sheen), 0 0 0 1px var(--stage-edge), 0 1px 2px var(--well-shade); }
+.feature-title { font-size: 1rem; line-height: 1.375rem; font-weight: 620; letter-spacing: -0.012em; color: var(--color-text-primary); }
+.feature-body { font-size: 0.875rem; line-height: 1.25rem; color: var(--color-text-secondary); text-wrap: pretty; }
 
-.shop {
-  --shop-line: color-mix(in srgb, var(--brand) 24%, var(--stage-edge));
+/* Where a link goes, as the browser is where a tag goes: the note is the attachment. */
+.chat { display: flex; min-width: 0; flex: 1; flex-direction: column; overflow: clip; border-radius: 1.125rem; background: var(--stage-well); box-shadow: inset 0 0 0 1px var(--stage-edge); }
+.chat-thread { display: flex; flex: 1; flex-direction: column; justify-content: center; gap: 0.75rem; border-top: 1px solid var(--stage-edge); padding: 0.75rem; background: var(--stage-recess); }
+.chat-bubble { max-width: 80%; align-self: flex-start; border-radius: 1rem 1rem 1rem 0.25rem; padding: 0.5rem 0.875rem; font-size: 0.9375rem; line-height: 1.375rem; color: var(--color-text-primary); background: var(--stage-surface); box-shadow: 0 0 0 1px var(--stage-edge); }
+.chat-bubble.is-out { align-self: flex-end; border-radius: 1rem 1rem 0.25rem 1rem; color: var(--color-text-on-accent); background: var(--color-accent-500); box-shadow: none; }
+
+/* The shop. Literal colours here are the merchant's brand, not ours, and that is the point:
+   it has to read as a stranger's site, so it follows neither the theme nor the green ground. */
+.browser { container-type: inline-size; display: flex; min-width: 0; flex: 1; flex-direction: column; overflow: clip; border-radius: 1.125rem; background: var(--stage-well); box-shadow: inset 0 0 0 1px var(--stage-edge); }
+.browser-bar { position: relative; display: flex; height: 2.25rem; flex: none; align-items: center; justify-content: center; padding-inline: 0.75rem; }
+.browser-lights { position: absolute; inset-inline-start: 0.875rem; display: none; gap: 0.375rem; }
+.browser-lights i { width: 0.5625rem; height: 0.5625rem; border-radius: 999px; background: var(--socket-metal); box-shadow: 0 0 0 0.5px var(--stage-edge); }
+.browser-url { display: inline-flex; min-width: 0; align-items: center; gap: 0.25rem; font-size: 0.75rem; line-height: 1rem; color: var(--color-text-secondary); }
+.msite {
+  --site-ink: #f6ead9;
+  --site-soft: #bba88f;
+  --site-line: rgb(246 234 217 / 0.12);
   display: flex;
-  min-width: 0;
+  flex: 1;
   flex-direction: column;
-  overflow: hidden;
-  border-radius: 1.125rem;
-  background: var(--shop-ground);
-  box-shadow: inset 0 0 0 1px var(--shop-line), inset 0 1px 3px var(--well-shade);
+  color: var(--site-ink);
+  background: radial-gradient(34rem 28rem at 22% 38%, #4a2c15, transparent 72%), #17100b;
 }
-.shop-bar { position: relative; display: flex; height: 2.5rem; flex: none; align-items: center; justify-content: center; border-bottom: 1px solid var(--shop-line); }
-.shop-lights { position: absolute; inset-inline-start: 0.875rem; display: none; gap: 0.375rem; }
-.shop-lights i { width: 0.5625rem; height: 0.5625rem; border-radius: 999px; background: var(--socket-metal); box-shadow: 0 0 0 0.5px var(--stage-edge); }
-.shop-url { display: inline-flex; align-items: center; gap: 0.25rem; border-radius: 999px; padding: 0.125rem 0.75rem; font-size: 0.75rem; line-height: 1rem; color: var(--color-text-secondary); background: var(--stage-surface); box-shadow: 0 0 0 1px var(--stage-edge); }
-.shop-page { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr); gap: 0.875rem; padding: 0.75rem; }
-.shop-product { display: flex; min-width: 0; flex-direction: column; gap: 0.75rem; }
-.shop-wall { display: flex; flex: 1; min-height: 11rem; align-items: center; justify-content: center; border-radius: 0.75rem; padding: 1.25rem; background: color-mix(in srgb, var(--brand) 13%, var(--shop-wall)); transition: background-color 280ms ease; }
-.shop-print {
-  --print-ink: color-mix(in srgb, var(--brand) 62%, #03140e);
-  position: relative;
-  display: block;
-  width: min(52%, 10rem);
-  aspect-ratio: 0.74;
-  border-radius: 2px;
-  background: #fbfbf6;
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.06), 0 0 0 6px #fff, 0 0 0 7px rgb(0 0 0 / 0.09), 0 18px 30px -12px rgb(0 0 0 / 0.34), 0 4px 8px -2px rgb(0 0 0 / 0.18);
-}
-.shop-print i {
-  position: absolute;
-  inset: 8%;
-  background: var(--print-ink);
-  transition: background-color 280ms ease;
-  -webkit-mask: url("/guilloche/rosette-print.svg") center / contain no-repeat;
-  mask: url("/guilloche/rosette-print.svg") center / contain no-repeat;
-}
-.shop-caption { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 0.75rem; padding-inline: 0.25rem; }
-.shop-widget { align-self: center; max-width: none; padding: 1rem; gap: 0.875rem; border-color: var(--shop-line); background: var(--stage-surface); box-shadow: var(--stage-lift); }
-.shop-widget header { gap: 0.625rem; }
+.msite-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--site-line); padding: 0.625rem 1rem; }
+.msite-logo { font-family: ui-serif, "New York", "Iowan Old Style", Georgia, serif; font-size: 0.9375rem; line-height: 1.25rem; font-weight: 600; }
+.msite-links { display: flex; gap: 1rem; font-size: 0.75rem; line-height: 1rem; color: var(--site-soft); }
+.msite-main { display: flex; flex: 1; flex-direction: column; justify-content: center; gap: 1rem; padding: 0.75rem; }
+.msite-story { display: flex; min-width: 0; align-items: center; gap: 0.875rem; padding-inline: 0.25rem; }
+.msite-story > div { min-width: 0; }
+.msite-lamp { width: 4.5rem; flex: none; }
+.msite-title { font-family: ui-serif, "New York", "Iowan Old Style", Georgia, serif; font-size: 1.375rem; line-height: 1.15; font-weight: 500; letter-spacing: -0.02em; text-wrap: balance; }
+.msite-copy { margin-top: 0.25rem; font-size: 0.8125rem; line-height: 1.25rem; color: var(--site-soft); text-wrap: pretty; }
+.msite-widget.theme-scope-light { --color-text-secondary: #55645e; }
+.msite-widget.dark { --color-text-secondary: #a9a59c; --color-border-focus-ring: #ffffff; }
+.msite-widget { max-width: none; padding: 1rem; gap: 0.875rem; box-shadow: 0 1px 2px rgb(0 0 0 / 0.2), 0 22px 40px -18px rgb(0 0 0 / 0.7); }
+.msite-widget header { gap: 0.625rem; }
 
+/* A milled track and one raised key. Equal columns are what let the thumb slide on a transform alone. */
+.segments { position: relative; display: grid; width: 100%; max-width: 21rem; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border-radius: 0.875rem; padding: 0.25rem; background: var(--stage-well); box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--stage-edge), 0 1px 0 var(--stage-sheen); }
+.segment-thumb { position: absolute; top: 0.25rem; bottom: 0.25rem; left: 0.25rem; width: calc((100% - 0.5rem) / var(--count)); border-radius: 0.625rem; background: linear-gradient(180deg, var(--stage-surface), var(--stage-surface-low)); box-shadow: inset 0 1px 0 var(--stage-sheen), 0 0 0 1px var(--stage-edge), 0 1px 2px var(--button-contact), 0 5px 10px -6px var(--button-contact); transform: translateX(calc(var(--index) * 100%)); transition: transform 320ms var(--ease-out); }
+.segment { position: relative; display: flex; height: 2.25rem; align-items: center; justify-content: center; border-radius: 0.625rem; cursor: pointer; outline: none; font-size: 0.875rem; line-height: 1.25rem; font-weight: 550; letter-spacing: -0.006em; font-variant-numeric: tabular-nums; color: var(--color-text-secondary); transition: color 160ms ease; }
+.segment:hover, .segment.is-selected { color: var(--color-text-primary); }
+.segment.is-selected { font-weight: 620; }
+.segment.is-focus { outline: 2px solid var(--color-border-focus-ring); outline-offset: 1px; }
+
+.dark .segment-thumb { background: linear-gradient(180deg, color-mix(in srgb, var(--stage-surface) 82%, white), var(--stage-surface)); }
+
+/* Off is pressed into the plate, on is a key raised out of it. */
+.coins { container-type: inline-size; display: grid; width: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.375rem; }
+.coin { position: relative; display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 0.25rem; border-radius: 0.875rem; padding: 0.5rem 0.25rem; cursor: pointer; outline: none; text-align: start; background: var(--stage-well); box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--stage-edge); transition: background-color 180ms ease, box-shadow 180ms ease, translate 180ms var(--ease-out); }
+.coin-mark { flex: none; transition: filter 180ms ease, opacity 180ms ease; }
+/* Dimmed only in the multiple choice group: there off means off, in a radio group it is still on offer. */
+[role="group"] > .coin:not(.is-selected) .coin-mark { opacity: 0.6; filter: saturate(0.3); }
+.coin:hover .coin-mark { opacity: 1; filter: none; }
+.coin-text { display: flex; min-width: 0; flex-direction: column; }
+.coin-symbol { font-size: 0.875rem; line-height: 1.125rem; font-weight: 620; letter-spacing: -0.008em; color: var(--color-text-secondary); transition: color 160ms ease; }
+.coin:hover .coin-symbol, .coin.is-selected .coin-symbol { color: var(--color-text-primary); }
+.coin-chain { display: none; overflow: hidden; font-size: 0.75rem; line-height: 1rem; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-secondary); }
+.coin-check { position: absolute; top: -0.3125rem; inset-inline-end: -0.3125rem; display: flex; width: 1.125rem; height: 1.125rem; align-items: center; justify-content: center; border-radius: 999px; color: var(--color-text-on-accent); background: var(--color-accent-500); box-shadow: 0 0 0 2px var(--stage-surface); opacity: 0; transform: scale(0.6); transition: opacity 160ms ease, transform 240ms var(--ease-out); }
+.coin.is-selected { background: var(--stage-surface); box-shadow: inset 0 1px 0 var(--stage-sheen), 0 0 0 1.5px var(--stage-flow), 0 1px 2px var(--button-contact), 0 8px 16px -8px color-mix(in srgb, var(--stage-flow) 55%, transparent); }
+.coin.is-selected .coin-check { opacity: 1; transform: none; }
+.coin:disabled { cursor: not-allowed; }
+.coin.is-focus { outline: 2px solid var(--color-border-focus-ring); outline-offset: 2px; }
+@container (min-width: 25rem) {
+  .coin { flex-direction: row; gap: 0.5rem; padding: 0.5rem 0.5rem 0.5rem 0.625rem; }
+  .coin-chain { display: block; }
+}
+
+@container (min-width: 34rem) {
+  .msite-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 21rem); align-items: center; gap: 1.25rem; padding: 1.25rem 1.25rem 1.25rem 1.5rem; }
+  .msite-story { flex-direction: column; align-items: stretch; gap: 1.25rem; padding-inline: 0; }
+  .msite-lamp { width: 100%; max-width: 15rem; align-self: center; }
+}
 @media (min-width: 640px) {
-  .shop-page { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 1rem; padding: 1rem; }
-  .shop-lights { display: flex; }
+  .features { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
 }
 @media (min-width: 1100px) {
-  .console { grid-template-columns: 20rem minmax(0, 1fr); gap: 0.75rem; }
-  .console-controls { flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; gap: 1.5rem; padding: 0.75rem 0.5rem 0.75rem 0.875rem; }
-  .console-rule, .console-embed { display: flex; }
-  .console-rule { display: block; }
-  /* The snippet is the column's one flexible row, so every control keeps its place and nothing floats. */
-  .console-embed { flex: 1; }
-  .console-code { flex: 1; }
-  .shop-page { grid-template-columns: minmax(0, 1fr) minmax(19rem, 24rem); padding: 1.25rem; gap: 1.25rem; }
-  .shop-wall { min-height: 22rem; }
-  .shop-print { width: min(80%, 16rem); }
-}
-@media (min-width: 1500px) {
-  .shop-page { padding: 1.75rem; gap: 2rem; }
-  .shop-print { width: min(52%, 19rem); }
+  .product { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: 42rem auto; gap: 0.75rem; }
+  .product-demo { grid-column: 2; grid-row: 1; }
+  .product-how { grid-column: 1; grid-row: 1; padding: 1.25rem 1.5rem 1rem 1.25rem; }
+  .is-flipped .product-demo { grid-column: 1; }
+  .is-flipped .product-how { grid-column: 2; }
+  .features { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .browser-lights { display: flex; }
+  .chat-thread { gap: 1rem; padding: 1.25rem; }
 }
 
 /* ----- Footer ------------------------------------------------------------------

@@ -18,8 +18,8 @@ function Cell({ href, label, value, note }: { href: string; label: string; value
   return (
     <Link href={href} className="pos-cell">
       <span className="truncate text-body-regular text-text-secondary">{label}</span>
-      <span className="truncate text-title-2-semibold tabular-nums">{value}</span>
-      <span className="truncate text-caption-1-regular text-text-secondary">{note}</span>
+      <span className="dash-figure truncate">{value}</span>
+      <span className="text-caption-1-regular text-text-secondary">{note}</span>
     </Link>
   );
 }

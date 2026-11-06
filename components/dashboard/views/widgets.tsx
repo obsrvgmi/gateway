@@ -17,7 +17,7 @@ import type { Widget, WidgetStatus } from "@/lib/types";
 import { cx } from "@/utils/cx";
 import { Sparkline } from "../charts";
 import { formatCount, plural } from "../fmt";
-import { AddTile, Bento, CopyButton, EmptyState, PageHeader, Panel, Stat, WidgetStatusChip } from "../ui";
+import { AddTile, Bento, CARD_SPANS, CopyButton, EmptyState, PageHeader, Panel, Stat, WidgetStatusChip } from "../ui";
 
 const RADIUS = { rounded: "rounded-xl", soft: "rounded-md", sharp: "rounded-none" };
 
@@ -99,7 +99,7 @@ export function WidgetsView() {
       ) : (
         <Bento>
           {visible.map(({ widget, totals, trend }) => (
-            <Panel key={widget.id} className="col-span-12 gap-3 @xl:col-span-6 @5xl:col-span-4">
+            <Panel key={widget.id} className={cx(CARD_SPANS, "gap-3")}>
               <WidgetThumb widget={widget} />
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-col">

@@ -131,8 +131,8 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
   return (
     <>
       <PageHeader title={existing ? `Edit ${existing.title}` : "New payment link"} description={existing ? "The URL stays the same. Changes apply to the next checkout." : "Set what you're charging and which asset you want to receive."} />
-      <div className="grid grid-cols-12 items-start gap-3 @3xl:gap-4">
-        <Panel className="col-span-12 @4xl:col-span-7">
+      <div className="grid grid-cols-12 items-start gap-3 @3xl:gap-4 @wide:grid-cols-[minmax(0,46rem)_minmax(0,1fr)]">
+        <Panel className="col-span-12 @4xl:col-span-7 @wide:col-span-1">
           <form onSubmit={step === 1 && !existing ? (event) => { event.preventDefault(); next(); } : submit} noValidate className="flex flex-col gap-5">
             {!existing && (
               <ol className="flex items-center gap-2 text-caption-1-medium" aria-label="Steps">
@@ -190,8 +190,8 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
           </form>
         </Panel>
 
-        <div className="dash-plate col-span-12 flex min-w-0 flex-col items-center gap-3 rounded-3xl p-4 @4xl:sticky @4xl:top-[4.5rem] @4xl:col-span-5">
-          <SimulatedTag>Preview, illustrative prices</SimulatedTag>
+        <div className="dash-plate dash-canvas col-span-12 flex min-w-0 flex-col items-center gap-3 rounded-3xl p-4 @4xl:sticky @4xl:top-[4.5rem] @4xl:col-span-5 @wide:col-span-1 @wide:min-h-[calc(100dvh-11.5rem)] @wide:justify-center">
+          <SimulatedTag className="bg-background-inner-default">Preview, illustrative prices</SimulatedTag>
           <CheckoutWidget
             merchant={settings.businessName}
             title={title || "Your link title"}

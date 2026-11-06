@@ -16,9 +16,10 @@ import { formatDate, formatUsd, formatUsdWhole } from "@/lib/format";
 import { sourceTotals, sourceTrend } from "@/lib/metrics";
 import { actions, newId, useGateway } from "@/lib/store";
 import type { LinkStatus, PaymentLink } from "@/lib/types";
+import { cx } from "@/utils/cx";
 import { Sparkline } from "../charts";
 import { formatCount, plural } from "../fmt";
-import { AddTile, Bento, copyText, EmptyState, LinkStatusChip, PageHeader, Panel, Stat } from "../ui";
+import { AddTile, Bento, CARD_SPANS, copyText, EmptyState, LinkStatusChip, PageHeader, Panel, Stat } from "../ui";
 
 type Tab = LinkStatus | "all";
 const TABS: [Tab, string][] = [["all", "All"], ["active", "Active"], ["paused", "Paused"], ["expired", "Expired"]];
@@ -78,12 +79,12 @@ export function LinksView() {
       ) : view === "cards" ? (
         <Bento>
           {visible.map(({ link, totals, trend }) => (
-            <Panel key={link.id} className="col-span-12 gap-3 @xl:col-span-6 @5xl:col-span-4">
+            <Panel key={link.id} className={cx(CARD_SPANS, "gap-3")}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <TokenMark symbol={link.receiveAsset} />
                   <div className="flex min-w-0 flex-col">
-                    <h2 className="truncate text-body-semibold" title={link.title}><Link href={`/dashboard/links/${link.id}`} className="rounded outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring">{link.title}</Link></h2>
+                    <h2 className="text-body-semibold [overflow-wrap:anywhere]"><Link href={`/dashboard/links/${link.id}`} className="rounded outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring">{link.title}</Link></h2>
                     <p className="truncate text-caption-1-regular text-text-secondary">{link.amount === null ? "Customer sets amount" : formatUsd(link.amount)}, to {link.receiveAsset}</p>
                   </div>
                 </div>
@@ -96,7 +97,7 @@ export function LinksView() {
                 </div>
                 <Sparkline values={trend} label={`${link.title}, volume over 30 days`} className="w-24 shrink-0" />
               </div>
-              <div className="flex items-center justify-between gap-2">
+              <div className="mt-auto flex items-center justify-between gap-2">
                 <LinkStatusChip status={link.status} />
                 <span className="truncate text-caption-1-regular text-text-secondary">{link.expiresAt ? `Expires ${formatDate(link.expiresAt)}` : `Created ${formatDate(link.createdAt)}`}</span>
               </div>
@@ -119,8 +120,8 @@ export function LinksView() {
               {visible.map(({ link, totals }) => (
                 <TableRow key={link.id} id={link.id}>
                   <TableCell>
-                    <span className="flex max-w-[280px] flex-col">
-                      <Link href={`/dashboard/links/${link.id}`} className="truncate rounded text-body-medium text-text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring" title={link.title}>{link.title}</Link>
+                    <span className="flex max-w-[280px] min-w-40 flex-col whitespace-normal">
+                      <Link href={`/dashboard/links/${link.id}`} className="rounded text-body-medium text-text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring">{link.title}</Link>
                       <span className="text-caption-1-regular text-text-secondary">Created {formatDate(link.createdAt)}</span>
                     </span>
                   </TableCell>

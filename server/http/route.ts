@@ -1,5 +1,6 @@
 import "server-only";
 import { isIPv6 } from "node:net";
+import { unstable_rethrow } from "next/navigation";
 import { NextResponse, type NextRequest } from "next/server";
 import { ZodError, type z } from "zod";
 import { can, type Permission, type Role } from "../auth/rbac";
@@ -30,6 +31,8 @@ export function publicRoute(handler: (request: NextRequest, params: Record<strin
     try {
       return await handler(request, (await context.params) as Record<string, string>);
     } catch (error) {
+      // Next signals "this route is dynamic" by throwing. That isn't a failure, and must reach Next.
+      unstable_rethrow(error);
       return toResponse(error, request);
     }
   };
