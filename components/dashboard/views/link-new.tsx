@@ -118,8 +118,8 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
   return (
     <>
       <PageHeader title={existing ? `Edit ${existing.title}` : "New payment link"} description={existing ? "The URL stays the same. Changes apply to the next checkout." : "Set what you're charging and which asset you want to receive."} />
-      <div className="grid grid-cols-12 items-start gap-3 @3xl:gap-4">
-        <Panel className="col-span-12 @4xl:col-span-7">
+      <div className="grid grid-cols-12 items-start gap-3 @3xl:gap-4 @wide:grid-cols-[minmax(0,46rem)_minmax(0,1fr)]">
+        <Panel className="col-span-12 @4xl:col-span-7 @wide:col-span-1">
           <form onSubmit={submit} noValidate className="flex flex-col gap-5">
             <Input label="Title" placeholder="Brand sprint deposit" value={title} onChange={setTitle} isRequired isInvalid={titleInvalid} errorMessage="Give the link a title." hint="Customers see this at checkout." />
             <Textarea label="Description" placeholder="What is this payment for?" value={description} onChange={setDescription} rows={2} />
@@ -161,8 +161,8 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
           </form>
         </Panel>
 
-        <div className="dash-plate col-span-12 flex min-w-0 flex-col items-center gap-3 rounded-3xl p-4 @4xl:sticky @4xl:top-[4.5rem] @4xl:col-span-5">
-          <SimulatedTag>Preview, this is what customers see</SimulatedTag>
+        <div className="dash-plate dash-canvas col-span-12 flex min-w-0 flex-col items-center gap-3 rounded-3xl p-4 @4xl:sticky @4xl:top-[4.5rem] @4xl:col-span-5 @wide:col-span-1 @wide:min-h-[calc(100dvh-11.5rem)] @wide:justify-center">
+          <SimulatedTag className="bg-background-inner-default">Preview, this is what customers see</SimulatedTag>
           <CheckoutWidget
             merchant={settings.businessName}
             title={title || "Your link title"}

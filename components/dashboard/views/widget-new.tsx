@@ -112,10 +112,11 @@ function AssetPicker({ value, onChange }: { value: AssetSymbol[]; onChange: (ass
               type="button"
               aria-pressed={on}
               onClick={() => toggle(asset.symbol)}
-              className={cx("flex cursor-pointer flex-col items-center gap-1 rounded-xl py-2 outline-none transition-[background-color,box-shadow,opacity] duration-150 focus-visible:ring-2 focus-visible:ring-border-focus-ring", on ? "bg-background-secondary-default shadow-[inset_0_0_0_1.5px_var(--viz-primary)]" : "opacity-60 shadow-[inset_0_0_0_1px_var(--color-border-button-default)] hover:opacity-100")}
+              className="dash-coin"
             >
               <TokenMark symbol={asset.symbol} size="sm" />
-              <span className="text-caption-1-medium">{asset.symbol}</span>
+              {asset.symbol}
+              {on && <span aria-hidden className="dash-coin-check"><RiCheckLine className="size-2.5" /></span>}
             </button>
           );
         })}
@@ -185,8 +186,8 @@ function WidgetBuilder({ existing }: { existing?: Widget }) {
           </>
         }
       />
-      <div className="grid grid-cols-12 items-start gap-3 @3xl:gap-4">
-        <div className="col-span-12 grid min-w-0 grid-cols-12 gap-3 @3xl:gap-4 @4xl:col-span-7">
+      <div className="grid grid-cols-12 items-start gap-3 @3xl:gap-4 @wide:grid-cols-[minmax(0,46rem)_minmax(0,1fr)] @ultra:grid-cols-[minmax(0,86rem)_minmax(0,1fr)]">
+        <div className="dash-masonry col-span-12 grid min-w-0 grid-cols-12 gap-3 @3xl:gap-4 @4xl:col-span-7 @wide:col-span-1">
           <Panel title="Identity" className="col-span-12">
             <div className="grid grid-cols-1 gap-4 @xl:grid-cols-2">
               <Input label="Widget name" hint="For you. Customers see it as the order title." value={draft.name} onChange={(value) => { set("name", value); setNameError(false); }} isRequired isInvalid={nameError} errorMessage="Give the widget a name." />
@@ -257,7 +258,7 @@ function WidgetBuilder({ existing }: { existing?: Widget }) {
           </Panel>
         </div>
 
-        <div className="dash-plate col-span-12 flex min-w-0 flex-col gap-3 rounded-3xl p-3 @4xl:sticky @4xl:top-[4.5rem] @4xl:col-span-5">
+        <div className="dash-plate col-span-12 flex min-w-0 flex-col gap-3 rounded-3xl p-3 @4xl:sticky @4xl:top-[4.5rem] @4xl:col-span-5 @wide:col-span-1 @wide:min-h-[calc(100dvh-11.5rem)]">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <SegmentedControl aria-label="Preview page colour" selectedKeys={[ground]} onSelectionChange={(keys) => { const next = [...keys][0]; if (next) setGround(next as "light" | "dark"); }}>
               <SegmentedControlItem id="light" aria-label="On a light page"><RiSunLine className="size-4" aria-hidden /></SegmentedControlItem>
@@ -270,7 +271,7 @@ function WidgetBuilder({ existing }: { existing?: Widget }) {
             </SegmentedControl>
           </div>
           {/* The ground is the merchant's page, not ours, so it ignores the dashboard's theme. */}
-          <div className={cx("flex justify-center rounded-2xl p-4 text-text-primary transition-colors duration-200", ground === "dark" ? "dark bg-background-full" : "theme-scope-light bg-background-secondary-default")}>
+          <div className={cx("flex justify-center rounded-2xl p-4 text-text-primary transition-colors duration-200 @wide:flex-1 @wide:items-center", ground === "dark" ? "dark bg-background-full" : "theme-scope-light bg-background-secondary-default")}>
             <CheckoutWidget
               merchant={merchant}
               title={draft.name || "Checkout"}

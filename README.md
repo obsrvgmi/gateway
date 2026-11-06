@@ -33,20 +33,20 @@ This repo is the product surface for that idea, built end to end as a clickable 
 
 ### Landing: pick an asset, watch the route light up
 
-The hero above is interactive: choose what the customer pays with and what the merchant receives, and the channels between them follow a fake three-step settlement timeline.
+The hero above is interactive: choose what the customer pays with and what the merchant receives, and the channels between them follow a fake three-step settlement timeline. Below it, two sections of the same shape (Payment Links and Widgets) each show how it works in three steps with working controls, beside the live product, then four things you get. The page closes with "They pay their way. You get paid yours."
 
-### Payment links: a link drawn as a cheque
+### Payment links: send a link, get paid
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/assets/cheque-dark.jpg">
-  <img alt="A payment link rendered as a dark green cheque with the amount, a QR code and a copy link field" src=".github/assets/cheque-light.jpg">
+  <img alt="Three steps to create and share a payment link beside the link shown as a cheque in a chat, above a list of features" src=".github/assets/cheque-light.jpg">
 </picture>
 
-### Embeddable widget, live on the page
+### Embeddable widget: add checkout to your site
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/assets/console-dark.jpg">
-  <img alt="Widget console: accent, corners and receive-asset controls beside a live checkout and its embed snippet" src=".github/assets/console-light.jpg">
+  <img alt="Three steps to customise and embed the checkout beside a merchant site running it live, above a list of features" src=".github/assets/console-light.jpg">
 </picture>
 
 ### Dashboard overview
@@ -83,6 +83,8 @@ Identity, accepted assets, look and behaviour on the left, a live preview and co
 - **Payment collection widget**: theme (light, dark, match page), accent colour, corner radius, amount mode and button label, with live preview and a copyable embed snippet.
 - **Merchant dashboard**: overview with 7-day to 12-month ranges and a simulated live feed; a filterable, sortable payments table with bulk actions and a timeline drawer; payouts; link and widget management; settings; a command palette (`Ctrl/Cmd + K`).
 - **Demo data**: seeded, deterministic history over two years; changes persist in `localStorage`, and settings can clear or restore it.
+- **Landing page**: a live checkout hero, then `#links` ("Send a link. Get paid.") and `#widgets` ("Add checkout to your site."), each with three steps you can try, a live demo and four features. The payment note is stamped SPECIMEN and the footer says payments are simulated.
+- **Large screens**: the dashboard recomposes for 1920 and 2560 wide displays (more columns, wider tables, a larger builder preview) and keeps its layout below that.
 - **Light and dark** themes through BoardUI semantic tokens, and a reduced-motion path for the landing animation.
 
 ## How it is meant to work
@@ -116,7 +118,7 @@ The full table lives in [CLAUDE.md](./CLAUDE.md#mock-vs-real).
 
 | Route | What it is |
 | --- | --- |
-| `/` | Landing page with a live checkout demo |
+| `/` | Landing page: live checkout hero, Payment Links and Widgets sections, footer |
 | `/pay/[id]` | Hosted checkout for a payment link |
 | `/dashboard` | Overview: range control, volume, KPIs, payouts, live feed, breakdowns |
 | `/dashboard/payments` | Filters, sorting, bulk actions, detail drawer |
@@ -125,7 +127,7 @@ The full table lives in [CLAUDE.md](./CLAUDE.md#mock-vs-real).
 | `/dashboard/links/new`, `/dashboard/links/[id]/edit` | Create or edit a link, preview, share URL and QR |
 | `/dashboard/widgets` | Manage widgets |
 | `/dashboard/widgets/new`, `/dashboard/widgets/[id]/edit` | Customize a widget, preview, embed snippet |
-| `/dashboard/settings` | Payouts, branding, webhooks, API keys, team, alerts, demo data |
+| `/dashboard/settings` | Business and branding, developers (webhooks, API keys), team and alerts, workspace and demo data |
 
 ## Tech stack
 
@@ -164,11 +166,12 @@ app/                  Routes: landing, /pay/[id], /dashboard/*
 components/
   checkout/           CheckoutWidget (shared UI) and HostedCheckout
   dashboard/          Shell, sidebar, primitives, charts, views/
-  marketing/          Landing hero, flow channels, product section, nav
+  marketing/          Landing hero, flow channels, the two product scenes (Scene template), nav, footer
   brand/              Logo, token logos, guilloche seal
   base/ application/ foundations/   Vendored BoardUI source
 lib/                  Types, store, seed data, quotes, metrics, formatting
-styles/               BoardUI theme, typography, landing stage styles
+styles/               BoardUI theme, typography, landing stage and page styles, dashboard width tiers
+public/guilloche/     SVG art used as CSS masks
 hooks/ utils/         BoardUI helpers (cx, etc.)
 .github/assets/       README screenshots and social preview
 ```
