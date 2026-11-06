@@ -20,7 +20,7 @@ const R = "server/payments/refunds.ts";
 const W = "server/payments/wallet.ts";
 const SM = "server/payments/state-machine.ts";
 const S = "lib/sign-intent.ts";
-const ENGINE = ["test/payments.test.ts", "test/money-guards.test.ts"];
+const ENGINE = ["test/payments.test.ts", "test/money-guards.test.ts", "test/guard-coverage.test.ts"];
 const ROUTES = ["test/routes.test.ts"];
 
 /** `[name, file, find, replace, tests]`. Replacing with `if (false)` keeps the code parsing. */

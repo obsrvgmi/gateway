@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ONE_CLICK_QUOTE_KEY, type SignedQuote } from "@/lib/intents";
+import { ed25519 } from "@noble/curves/ed25519";
+import { base58 } from "@scure/base";
+import { ONE_CLICK_QUOTE_KEY, quoteMessage, type SignedQuote } from "@/lib/intents";
 import { signTransfer, type PreparedTransfer } from "@/lib/sign-intent";
 import * as wallet from "@/lib/wallet";
 import generated from "./fixtures/generate-intent.json";
@@ -53,10 +55,22 @@ describe("before a wallet is ever asked to sign", () => {
     await refused(prepared({ quote }), { recipient: "0x000000000000000000000000000000000000dEaD", mode: "live" }, /signature/);
   });
 
-  it("refuses a server's own signing key in live mode", async () => {
-    const quote = structuredClone(payout) as unknown as SignedQuote;
-    quote.signature = "ed25519:4Y62CbKEKjP3A1tnGM1kiwBap6x5VizdXY1DF3fPcFVJRW5ojt1SKEBCxLNWtShHYKoNSS3jpdrhtBMxPdBvxqzo";
-    await refused(prepared({ quote, quoteKey: "ed25519:11111111111111111111111111111111" }), { recipient: RECIPIENT, mode: "live" }, /signature/);
+  describe("a server that signs its own quote, with its own key", () => {
+    const attackerKey = ed25519.utils.randomPrivateKey();
+    const attackerPublic = `ed25519:${base58.encode(ed25519.getPublicKey(attackerKey))}`;
+    const forged = () => {
+      const quote = structuredClone(payout) as unknown as SignedQuote;
+      quote.signature = `ed25519:${base58.encode(ed25519.sign(quoteMessage(quote), attackerKey))}`;
+      return quote;
+    };
+
+    it("is refused in live mode, whatever key it offers", async () => {
+      await refused(prepared({ quote: forged(), quoteKey: attackerPublic }), { recipient: RECIPIENT, mode: "live" }, /signature/);
+    });
+
+    it("works in test mode, where the simulator's key is per process", async () => {
+      await expect(signTransfer(prepared({ quote: forged(), quoteKey: attackerPublic }), { recipient: RECIPIENT, mode: "sim" })).resolves.toBe("0xsigned");
+    });
   });
 
   it("refuses a payload that does more than the quote says", async () => {

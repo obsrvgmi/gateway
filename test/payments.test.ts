@@ -241,17 +241,6 @@ describe("quote guards, with a provider returning hostile quotes", () => {
     await refused((r) => { r.quote.depositAddress = "0xattacker"; }, "quote_signature");
   });
 
-  it("refuses a quote with no deposit address", async () => {
-    // Re-signed by the simulator, so only the usability guard can catch it.
-    const { orgId } = await merchantOrg();
-    const source = await loadSource(await createLink(orgId));
-    const sim = new SimProvider();
-    setProviderForTests(hostile({ quote: async (request) => ({ ...(await sim.quote({ ...request, dry: true })), quoteRequest: { ...request } }) }));
-    await expect(createSession(source, { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: key() })).rejects.toBeTruthy();
-    const [row] = await db().select().from(schema.payments).where(eq(schema.payments.sourceId, source.id));
-    expect(row.state).toBe("quote_failed");
-  });
-
   it("turns a provider refusal into a clean error with no address", async () => {
     const { orgId } = await merchantOrg();
     const source = await loadSource(await createLink(orgId));

@@ -87,6 +87,12 @@ describe("checkTransferPayload", () => {
     expect(checkTransferPayload(edit(fn), expected, FUTURE)).not.toBeNull();
   });
 
+  it("refuses another kind of action, even with the right address and amount", () => {
+    const parsed = JSON.parse(payload);
+    parsed.intents[0].intent = "ft_withdraw";
+    expect(checkTransferPayload(JSON.stringify(parsed), expected, FUTURE)).toMatch(/not a transfer/);
+  });
+
   it("refuses text that isn't JSON", () => {
     expect(checkTransferPayload("transfer everything", expected, FUTURE)).not.toBeNull();
   });
