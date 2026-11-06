@@ -152,10 +152,9 @@ Open <http://localhost:3000>, then try **Get Started** for the dashboard or **Cr
 npm run build        # production build
 npm run start        # serve the production build
 npm run lint         # eslint
-npx tsc --noEmit     # typecheck
+npm run typecheck    # route types, then tsc
+npm test             # vitest
 ```
-
-Lint currently reports issues in some vendored BoardUI files; code owned by this project is clean. There is no test suite yet.
 
 ## Project structure
 
@@ -195,4 +194,4 @@ Read [CLAUDE.md](./CLAUDE.md) first (it covers the Next.js 16 caveats and the mo
 
 ## Licence
 
-No licence has been specified yet.
+All rights reserved; see [LICENSE](./LICENSE). The owner may replace this with an open licence.

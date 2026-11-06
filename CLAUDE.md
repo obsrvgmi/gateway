@@ -26,7 +26,8 @@ Stack: Next.js 16.4 App Router, React 19.3, Tailwind CSS v4, TypeScript, BoardUI
 npm run dev          # dev server
 npm run build        # production build
 npm run lint         # eslint
-npx tsc --noEmit     # typecheck
+npm run typecheck    # generates route types, then tsc (plain tsc fails on a fresh clone)
+npm test             # vitest
 npx boardui@latest add <name> --yes   # add a BoardUI component into components/
 ```
 
@@ -46,7 +47,7 @@ npx boardui@latest add <name> --yes   # add a BoardUI component into components/
 | `public/guilloche/` | ours: static SVG art used as CSS masks (`rosette`, `rosette-ring`, `rosette-print`, `wordmark`). Generated once with a throwaway script: the rosettes from the formula in `components/brand/rosette.tsx`, the wordmark from Inter Bold outlines. Masks, not inline SVG, so they add no HTML weight |
 | `components/base/`, `components/application/`, `components/foundations/`, `utils/`, `hooks/` | vendored BoardUI source. Prefer adding via the CLI over editing; do not reformat. |
 
-BoardUI extras pulled in by `add` and unused by our routes (safe to remove): `dashboard-sidebar`, `dashboard-team-menu`, `dashboard-user-menu`, `components/application/settings/*`, `data-table`, and `public/ai-chat/`. `.cursor/rules/boardui.mdc` (Cursor copy of the BoardUI rules) and `.agents/skills/` (design skills for agents) are tooling, not app code.
+`.cursor/rules/boardui.mdc` (Cursor copy of the BoardUI rules) and `.agents/skills/` (design skills for agents) are tooling, not app code.
 
 Routes:
 
@@ -181,8 +182,8 @@ Each page renders a `components/dashboard/views/*` component; `app/dashboard/lay
 
 ## Current status / next up
 
-- Verification: `npx tsc --noEmit` and `npm run build` pass. Dashboard flows are covered by a throwaway Playwright script, not committed. `npm run lint` reports 5 errors and 2 warnings, all in vendored BoardUI files (`components/application/dashboard/dashboard-user-menu.tsx`, `components/application/data-table/data-table.tsx`, `components/application/settings/plan-art-flame.tsx`, `components/application/settings/settings-modal.tsx`, `components/base/date-picker/date-picker.tsx`, `components/base/date-picker/shared.tsx`); files we own are clean. There is no test suite; flows were checked with a throwaway Playwright script that is not committed.
-- Git: `origin` is github.com/obsrvgmi/gateway (public), default branch `main`. The repo description and topics are set on GitHub. README images live in `.github/assets/`; the social preview there must be uploaded by hand in repo settings. No licence is specified yet.
+- Verification: CI (`.github/workflows/ci.yml`) runs lint, typecheck, tests, build and a production dependency audit. Production design: `docs/superpowers/specs/2026-11-06-production-gateway-design.md`.
+- Git: `origin` is github.com/obsrvgmi/gateway (public), default branch `main`. The repo description and topics are set on GitHub. README images live in `.github/assets/`; the social preview there must be uploaded by hand in repo settings. `LICENSE` is an all-rights-reserved notice until the owner picks a licence.
 - Done: landing (redesigned: note, console, docked header, footer), dashboard redesign (rail, top bar, palette, position strip, payouts, builder options, link editing), link creation/share/pay, widget customization and embed snippet (UI only), payments table, overview metrics, settings, demo-data reset.
 - Not built: notification centre, keyboard shortcuts beyond the palette, link and widget detail pages, a stepped creation flow, a collapsible rail, tax or statement exports.
 - Known gap: `useUnsavedGuard` can't stop the browser's Back button. Playwright's WebKit build segfaults on this Mac, so Safari was checked through a `WKWebView` harness (system WebKit): load, render, scroll timelines. Interactive flows have not been run in Safari.
