@@ -179,6 +179,7 @@ See `docs/runbooks/going-live.md` for the full list and the questions for NEAR.
 - `/embed` can only be framed by the widget's `site` when one is set. Without one, any site can frame it. Payments still go to the merchant either way.
 - The browser's quote checks prove the provider issued this quote, and that it matches what the merchant chose on screen. They don't prove the destination list the server sent is the merchant's own, which is why the dialog shows the full address and destinations are signed by the wallet. Nothing helps if the server can change the script it serves.
 - A refund of a payment that settled before a wallet change has to be signed by the old wallet, because that's where the funds are.
+- A compromised server could show an old route refund quote again, within its deadline, whose address has already been used. Quotes signed as intents are age-checked. Route quotes can't be, because the same address is reopened for days on purpose, so this one relies on the deadline and on the merchant seeing the address.
 - A send the provider refuses outright is treated as nothing sent. Only a compromised server could hold that signature and try later, and no state here would stop that.
 - A payment that arrives short is `underpaid`. The merchant is told, and it can't be refunded from the dashboard, because what to return is a decision for a person with NEAR's answer.
 - Merchant metrics stay client-side, capped at the newest 10,000 payments.
