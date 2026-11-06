@@ -90,6 +90,7 @@ export const teamRole = z.enum(["admin", "finance", "viewer"]);
 export const webhookEvent = z.enum(["payment.processing", "payment.settled", "payment.refunded", "payment.expired", "payment.failed", "link.created", "payout.sent", "payout.failed"]);
 
 export const webhookCreate = z.object({
-  url: z.string().trim().url().max(2000).refine((value) => new URL(value).protocol === "https:", "Webhook URLs must use https."),
+  // Whether it's allowed is decided in one place: `assertWebhookUrl`, again at every delivery.
+  url: z.string().trim().url("Enter a full URL.").max(2000),
   events: z.array(webhookEvent).min(1, "Pick at least one event."),
 });

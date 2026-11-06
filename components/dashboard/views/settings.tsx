@@ -39,9 +39,10 @@ const ALERTS: [keyof NotificationPrefs, string, string][] = [
 
 const TABS = [["business", "Business"], ["developers", "Developers"], ["team", "Team and alerts"], ["workspace", "Workspace"]];
 
-const isHttps = (value: string) => {
+/** A quick check for typos. The server decides what's allowed, and says why if it refuses. */
+const isWebUrl = (value: string) => {
   try {
-    return new URL(value).protocol === "https:";
+    return /^https?:$/.test(new URL(value).protocol);
   } catch {
     return false;
   }
@@ -238,7 +239,7 @@ function WebhooksCard({ hooks }: { hooks: Webhook[] }) {
   const [viewing, setViewing] = useState<Webhook | null>(null);
   const close = () => { setAdding(false); setUrl(""); setEvents(["payment.settled"]); setInvalid(false); setSecret(null); };
   const create = async () => {
-    if (!isHttps(url) || events.length === 0) {
+    if (!isWebUrl(url) || events.length === 0) {
       setInvalid(true);
       return;
     }
@@ -290,7 +291,7 @@ function WebhooksCard({ hooks }: { hooks: Webhook[] }) {
             <pre dir="ltr" className="overflow-x-auto rounded-xl bg-background-secondary-default p-3 text-caption-1-regular">{secret}</pre>
           ) : (
             <>
-              <Input label="Endpoint URL" inputDir="ltr" placeholder="https://api.yoursite.com/hooks" value={url} onChange={(value) => { setUrl(value); setInvalid(false); }} isInvalid={invalid && !isHttps(url)} errorMessage="Enter a full https:// URL." autoFocus />
+              <Input label="Endpoint URL" inputDir="ltr" placeholder="https://api.yoursite.com/hooks" value={url} onChange={(value) => { setUrl(value); setInvalid(false); }} isInvalid={invalid && !isWebUrl(url)} errorMessage="Enter a full URL, starting with https://." autoFocus />
               <fieldset className="flex flex-col gap-2">
                 <legend className="pb-1 text-body-medium">Events</legend>
                 {EVENTS.map((event) => (
