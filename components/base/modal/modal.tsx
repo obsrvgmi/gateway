@@ -54,11 +54,10 @@ import { cx, sortCx } from "@/utils/cx";
  * `AlertDialog` is the destructive-confirm preset: role="alertdialog", no
  * backdrop dismissal, focus starts on Cancel.
  *
- * Surface and motion follow Settings Modal: black/70 backdrop fading over
- * 300ms; the panel fades and sharpens from scale 0.85 and a 4px blur over
- * 300ms on the iOS sheet curve, and plays the same transition in reverse
- * before it unmounts. Reduced motion keeps the fade and drops the scale and
- * blur.
+ * Surface follows Settings Modal. Motion is tightened for this product: a
+ * black/70 backdrop fading over 200ms; the panel fades from scale 0.96 over
+ * 200ms on the iOS sheet curve, and plays the same transition in reverse
+ * before it unmounts. Reduced motion keeps the fade and drops the scale.
  */
 
 type IconComponent = ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" | "false" }>;
@@ -68,16 +67,16 @@ export type ModalSize = "sm" | "md" | "lg" | "xl";
 const styles = sortCx({
   overlay: "group/modal fixed inset-x-0 top-0 z-100 flex h-(--visual-viewport-height) items-center justify-center p-4 sm:p-6",
   backdrop: [
-    "absolute inset-0 bg-black/70",
-    "transition-opacity duration-300 ease-out",
+    "modal-backdrop absolute inset-0 bg-black/70",
+    "transition-opacity duration-200 ease-out",
     "group-data-[entering]/modal:opacity-0 group-data-[exiting]/modal:opacity-0",
   ].join(" "),
   modal: [
     "relative flex max-h-full w-full flex-col outline-none",
-    "transform-gpu transition-[opacity,scale,filter] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+    "transform-gpu transition-[opacity,scale] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)]",
     "data-[entering]:opacity-0 data-[exiting]:opacity-0",
-    "motion-safe:data-[entering]:scale-[0.85] motion-safe:data-[entering]:blur-[4px]",
-    "motion-safe:data-[exiting]:scale-[0.85] motion-safe:data-[exiting]:blur-[4px]",
+    "motion-safe:data-[entering]:scale-[0.96]",
+    "motion-safe:data-[exiting]:scale-[0.96]",
   ].join(" "),
   dialog: [
     // overflow-CLIP, not hidden: a hidden box is still programmatically
@@ -86,7 +85,7 @@ const styles = sortCx({
     "flex min-h-0 flex-col gap-4 overflow-clip py-6 outline-none",
     // Settings Modal's surface: page white in light mode, and in dark mode a
     // ground darker than the inputs and menus it holds, so they keep an edge.
-    "rounded-3xl border border-separator-border bg-background-full shadow-xs",
+    "modal-surface rounded-3xl border border-separator-border bg-background-full shadow-xs",
   ].join(" "),
   size: {
     sm: "max-w-[400px]",

@@ -1,13 +1,17 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
-import { Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import { useState } from "react";
 import { formatUsd, formatUsdWhole } from "@/lib/format";
 import { TokenMark } from "@/components/brand/token-mark";
-import type { Bucket, Share } from "@/lib/metrics";
+import type { Share } from "@/lib/metrics";
 import type { AssetSymbol } from "@/lib/types";
 import { cx } from "@/utils/cx";
-import { formatCompactUsd, formatCount, formatPercent } from "./fmt";
+import { formatCompactUsd, formatCount, formatPercent, plural } from "./fmt";
+import { preloadVolumeChart } from "./preload";
+
+export type { VolumeMetric } from "./volume-chart";
 
 export const assetColor = (asset: string) => `var(--viz-${asset}, var(--viz-other))`;
 /** These hues are too light to carry white labels. */
@@ -34,46 +38,11 @@ export function Sparkline({ values, label, className }: { values: number[]; labe
   );
 }
 
-function VolumeTooltip({ active, payload, previousLabel }: { active?: boolean; payload?: { payload: Bucket }[]; previousLabel: string }) {
-  const bucket = payload?.[0]?.payload;
-  if (!active || !bucket) return null;
-  return (
-    <div className="flex min-w-44 flex-col gap-1 rounded-xl border border-border-button-default bg-background-primary-default p-3 shadow-dropdown">
-      <p className="text-caption-1-medium text-text-secondary">{bucket.span}</p>
-      <p className="text-headline-semibold tabular-nums">{formatUsd(bucket.current.volume)}</p>
-      <p className="text-caption-1-regular text-text-secondary tabular-nums">{formatCount(bucket.current.count)} settled</p>
-      <p className="text-caption-1-regular text-text-secondary tabular-nums">{previousLabel}: {formatUsd(bucket.previous.volume)}</p>
-    </div>
-  );
-}
-
-export function VolumeChart({ buckets, previousLabel }: { buckets: Bucket[]; previousLabel: string }) {
-  const pattern = useId().replaceAll(":", "");
-  const data = useMemo(() => buckets.map((bucket) => ({ ...bucket, value: bucket.current.volume, prior: bucket.previous.volume })), [buckets]);
-  const every = buckets.length > 14 ? 5 : buckets.length > 12 ? 2 : 0;
-  return (
-    <div className="relative min-h-64 min-w-0 flex-1 @3xl:min-h-72" role="img" aria-label={`Settled volume by period. Switch to the table view for every value.`}>
-      <div className="absolute inset-0"><ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 0 }} barCategoryGap="28%">
-          <defs>
-            <pattern id={pattern} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-              <rect width="6" height="6" fill="var(--viz-primary)" opacity="0.2" />
-              <rect width="2" height="6" fill="var(--viz-primary)" opacity="0.65" />
-            </pattern>
-          </defs>
-          <CartesianGrid vertical={false} stroke="var(--color-separator-border)" />
-          <XAxis dataKey="label" interval={every ? every - 1 : 0} tickLine={false} axisLine={false} tick={{ fill: "var(--color-text-secondary)", fontSize: 12 }} tickMargin={8} />
-          <YAxis width={48} tickLine={false} axisLine={false} tick={{ fill: "var(--color-text-secondary)", fontSize: 12 }} tickFormatter={(value: number) => formatCompactUsd(value)} />
-          <Tooltip cursor={{ fill: "var(--color-background-secondary-default)" }} content={<VolumeTooltip previousLabel={previousLabel} />} isAnimationActive={false} />
-          <Bar dataKey="value" maxBarSize={24} radius={[4, 4, 0, 0]} isAnimationActive={false}>
-            {data.map((bucket) => <Cell key={bucket.key} fill={bucket.partial ? `url(#${pattern})` : "var(--viz-primary)"} />)}
-          </Bar>
-          <Line dataKey="prior" type="monotone" stroke="var(--color-foreground-icon-tertiary)" strokeWidth={2} dot={false} isAnimationActive={false} />
-        </ComposedChart>
-      </ResponsiveContainer></div>
-    </div>
-  );
-}
+/** Recharts is by far the largest thing on a dashboard route, and only this chart uses it. The box is the same either way. */
+export const VolumeChart = dynamic(() => preloadVolumeChart().then((module) => module.VolumeChart), {
+  ssr: false,
+  loading: () => <div aria-hidden className="relative min-h-64 min-w-0 flex-1 animate-pulse rounded-xl bg-background-secondary-default motion-reduce:animate-none @3xl:min-h-72" />,
+});
 
 export function LegendKey({ kind, children }: { kind: "bar" | "line" | "partial"; children: string }) {
   return (
@@ -97,25 +66,111 @@ export function SegmentBar({ parts, label }: { parts: { key: string; share: numb
   );
 }
 
-export function RankBars({ rows }: { rows: { key: string; label: string; value: string; share: number; icon?: AssetSymbol; color?: string }[] }) {
+export function RankBars({ rows }: { rows: { key: string; label: string; value: string; share: number; icon?: AssetSymbol; color?: string; href?: string }[] }) {
   const top = Math.max(...rows.map((row) => row.share), 0.0001);
   return (
-    <ul className="flex flex-col gap-2.5">
-      {rows.map((row) => (
-        <li key={row.key} className="flex items-center gap-2.5">
-          {row.icon && <TokenMark symbol={row.icon} size="sm" />}
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="truncate text-body-medium">{row.label}</span>
-              <span className="shrink-0 text-body-regular text-text-secondary tabular-nums">{row.value}</span>
+    <ul className="flex flex-col gap-0.5">
+      {rows.map((row) => {
+        const body = (
+          <>
+            {row.icon && <TokenMark symbol={row.icon} size="sm" />}
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="truncate text-body-medium">{row.label}</span>
+                <span className="shrink-0 text-body-regular text-text-secondary tabular-nums">{row.value}</span>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-background-secondary-default">
+                <div className="h-full rounded-full" style={{ width: `${(row.share / top) * 100}%`, background: row.color ?? "var(--viz-primary)" }} />
+              </div>
             </div>
-            <div className="h-1 overflow-hidden rounded-full bg-background-secondary-default">
-              <div className="h-full rounded-full" style={{ width: `${(row.share / top) * 100}%`, background: row.color ?? "var(--viz-primary)" }} />
-            </div>
-          </div>
-        </li>
-      ))}
+          </>
+        );
+        return (
+          <li key={row.key}>
+            {row.href ? (
+              <Link href={row.href} className="-mx-1.5 flex items-center gap-2.5 rounded-lg px-1.5 py-1 outline-none hover:bg-background-secondary-default focus-visible:ring-2 focus-visible:ring-border-focus-ring">{body}</Link>
+            ) : (
+              <div className="flex items-center gap-2.5 py-1">{body}</div>
+            )}
+          </li>
+        );
+      })}
     </ul>
+  );
+}
+
+/** One balance, three states, one hue: solid is final, lighter is waiting, hatched is still moving. */
+export function BalanceBar({ available, held, arriving }: { available: number; held: number; arriving: number }) {
+  const total = available + held + arriving;
+  if (total <= 0) return <div className="dash-well h-3 rounded-full" aria-hidden />;
+  const share = (value: number) => `${Math.max((value / total) * 100, value > 0 ? 1.2 : 0)}%`;
+  return (
+    <div role="img" aria-label={`Available ${formatUsd(available)}, on hold ${formatUsd(held)}, arriving ${formatUsd(arriving)}`} className="flex h-3 w-full gap-0.5">
+      {available > 0 && <span className="rounded-s-full bg-(--viz-primary)" style={{ width: share(available) }} />}
+      {held > 0 && <span className="bg-(--viz-primary) opacity-45" style={{ width: share(held) }} />}
+      {arriving > 0 && <span className="dash-hatch rounded-e-full" style={{ width: share(arriving) }} />}
+    </div>
+  );
+}
+
+/** The top of the axis: a round 1, 2 or 5 step above the largest value, so the ticks read as plain figures. */
+function niceCeiling(value: number) {
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const step = [1, 2, 5, 10].find((candidate) => candidate * magnitude >= value) ?? 10;
+  return step * magnitude;
+}
+
+/** One series on one axis, oldest first. A day with no sent runs has no bar, and the history table holds every value. */
+export function PayoutBars({ rows }: { rows: { key: string; label: string; usd: number; count: number }[] }) {
+  const [active, setActive] = useState<number | null>(null);
+  const top = niceCeiling(Math.max(...rows.map((row) => row.usd), 1));
+  const ticks = [top, top / 2, 0];
+  const shown = active === null ? null : rows[active];
+  const anchors = rows.length > 2 ? [0, Math.floor((rows.length - 1) / 2), rows.length - 1] : rows.map((_, index) => index);
+
+  return (
+    <div
+      role="group"
+      tabIndex={0}
+      aria-label={`Paid out, ${rows.length} recent runs, ${rows[0].label} to ${rows[rows.length - 1].label}. Use the arrow keys to read each run.`}
+      onFocus={() => setActive((index) => index ?? rows.length - 1)}
+      onBlur={() => setActive(null)}
+      onKeyDown={(event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const move = event.key === "ArrowRight" ? 1 : -1;
+        setActive((index) => Math.min(rows.length - 1, Math.max(0, (index ?? rows.length - 1) + move)));
+      }}
+      className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background-inner-default"
+    >
+      <div aria-hidden className="flex h-28 flex-col justify-between text-end text-caption-2-regular text-text-secondary tabular-nums">
+        {ticks.map((tick, index) => <span key={tick} className={cx("leading-none", index === 0 ? "-mt-px" : index === 2 ? "-mb-px" : "")}>{formatCompactUsd(tick)}</span>)}
+      </div>
+      <div className="relative h-28">
+        {ticks.map((tick) => <span key={tick} aria-hidden className="absolute inset-x-0 h-px bg-separator-border" style={{ bottom: `${(tick / top) * 100}%` }} />)}
+        <ul className="absolute inset-0 flex items-stretch" onPointerLeave={() => setActive(null)}>
+          {rows.map((row, index) => (
+            <li key={row.key} onPointerEnter={() => setActive(index)} className="flex min-w-0 flex-1 flex-col justify-end px-px">
+              <span className={cx("block rounded-t-[4px] bg-(--viz-primary) transition-opacity duration-100", active !== null && active !== index && "opacity-45")} style={{ height: `${Math.max((row.usd / top) * 100, row.usd ? 2 : 0)}%` }} />
+              <span className="sr-only">{row.label}: {formatUsd(row.usd)}</span>
+            </li>
+          ))}
+        </ul>
+        {shown && active !== null && (
+          <div role="status" className="pointer-events-none absolute -top-2 z-10 flex w-max -translate-y-full flex-col rounded-xl border border-border-button-default bg-background-primary-default px-2.5 py-1.5 shadow-dropdown" style={active < rows.length / 2 ? { left: `${((active + 0.5) / rows.length) * 100}%` } : { right: `${100 - ((active + 0.5) / rows.length) * 100}%` }}>
+            <span className="text-caption-1-regular text-text-secondary">{shown.label}</span>
+            <span className="text-body-semibold tabular-nums">{formatUsd(shown.usd)}</span>
+            <span className="text-caption-1-regular text-text-secondary tabular-nums">{plural(shown.count, "asset")} sent</span>
+          </div>
+        )}
+      </div>
+      <span aria-hidden />
+      <div aria-hidden className="relative h-4 text-caption-2-regular text-text-secondary">
+        {anchors.map((index, position) => (
+          <span key={rows[index].key} className={cx("absolute top-0 whitespace-nowrap", position === 0 ? "start-0" : position === anchors.length - 1 ? "end-0" : "start-1/2 -translate-x-1/2 rtl:translate-x-1/2")}>{rows[index].label}</span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -159,7 +214,7 @@ export function Heatmap({ cells, weekdays, max }: { cells: number[][]; weekdays:
 type Flow = { key: string; pay: AssetSymbol; receive: AssetSymbol; volume: number };
 
 /** The product in one picture: any asset in, the merchant's asset out. Ribbon width is settled volume. */
-export function RouteFlow({ flows, pay, receive }: { flows: Flow[]; pay: Share<AssetSymbol>[]; receive: Share<AssetSymbol>[] }) {
+export function RouteFlow({ flows, pay, receive, hrefFor }: { flows: Flow[]; pay: Share<AssetSymbol>[]; receive: Share<AssetSymbol>[]; hrefFor?: (asset: AssetSymbol) => string }) {
   const [focus, setFocus] = useState<AssetSymbol | null>(null);
   const gap = 6;
   // Every asset gets a slot tall enough for its label, however little volume it carried.
@@ -206,7 +261,7 @@ export function RouteFlow({ flows, pay, receive }: { flows: Flow[]; pay: Share<A
     <div className={cx("absolute inset-x-0 flex -translate-y-1/2 items-center gap-1.5", side === "right" && "flex-row-reverse text-end")} style={{ top: y + size / 2 }} onPointerEnter={() => side === "left" && setFocus(item.key)} onPointerLeave={() => setFocus(null)}>
       <TokenMark symbol={item.key} size="sm" />
       <span className="flex min-w-0 flex-col">
-        <span className="text-caption-1-semibold leading-tight">{item.key}</span>
+        {side === "left" && hrefFor ? <Link href={hrefFor(item.key)} className="rounded text-caption-1-semibold leading-tight outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring">{item.key}</Link> : <span className="text-caption-1-semibold leading-tight">{item.key}</span>}
         <span className="truncate text-caption-2-regular text-text-secondary tabular-nums">{formatCompactUsd(item.volume)}</span>
       </span>
     </div>

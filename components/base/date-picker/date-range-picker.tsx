@@ -38,7 +38,7 @@ import { useDismissOnOutsidePress, useTriggerToggle } from "@/utils/use-dismiss-
  *
  * A dual-month date range picker: trigger button opens a popover with a
  * quick-select sidebar, two adjacent months (react-aria's
- * `visibleDuration={{ months: 2 }}`), and a footer with read-only date chips,
+ * `visibleDuration={{ months: compact ? 1 : 2 }}`), and a footer with read-only date chips,
  * a "N days selected" pill, and Cancel/Apply.
  *
  * Two deliberate departures from the raw Figma frame:
@@ -227,6 +227,8 @@ export function DateRangePicker({
   };
 
   const [isOpen, setIsOpen] = useState(false);
+  // Two months and the presets need 814px. Narrower than that, one month is what fits.
+  const [compact] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 860px)").matches);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLElement>(null);
   useDismissOnOutsidePress(isOpen, () => setIsOpen(false), [triggerRef, popoverRef]);
@@ -253,21 +255,23 @@ export function DateRangePicker({
           {({ close }) => (
             <RangeCalendar
               aria-label={ariaLabel}
-              visibleDuration={{ months: 2 }}
+              visibleDuration={{ months: compact ? 1 : 2 }}
               value={pendingValue}
               onChange={setPendingValue}
             >
               <div className="flex gap-3">
-                <div className="pt-4 ps-4">
-                  <QuickSelect
-                    value={pendingValue}
-                    onSelect={(range) => setPendingValue(range)}
-                  />
-                </div>
-                <div className="flex flex-col pt-2 pe-2 pb-3">
+                {!compact && (
+                  <div className="pt-4 ps-4">
+                    <QuickSelect
+                      value={pendingValue}
+                      onSelect={(range) => setPendingValue(range)}
+                    />
+                  </div>
+                )}
+                <div className={cx("flex flex-col pt-2 pe-2 pb-3", compact && "ps-2")}>
                   <div className="flex gap-2">
-                    <MonthPanel offset={0} showPrev />
-                    <MonthPanel offset={1} showNext />
+                    <MonthPanel offset={0} showPrev showNext={compact} />
+                    {!compact && <MonthPanel offset={1} showNext />}
                   </div>
                   <Footer
                     value={pendingValue}

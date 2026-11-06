@@ -1,0 +1,806 @@
+/* ---------------------------------------------------------------------------
+ * Everything on `/` below and around the hero. Plate material, sockets, grooves
+ * and the layout tokens (--gutter) come from stage.css.
+ *
+ * The page is one object: a channel leaves the hero, runs down the centre axis
+ * under every plate, and ends at the seal in the footer. Scenes hang off that axis
+ * the way the hero does, text either side of it, full-width plates across it.
+ *
+ * Two surfaces are ink in both themes, the note and the footer, because they are
+ * printed objects, not UI. Each carries `.dark`, which scopes every token.
+ * --------------------------------------------------------------------------- */
+.site {
+  --scene-gap: clamp(4.5rem, 11vh, 8rem);
+  --bar-height: 4.25rem;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --color-border-focus-ring: var(--color-accent-800);
+  /* BoardUI's neutral secondary is 3.6 to 4.4:1 on these green grounds. Stepped to clear AA. */
+  --color-text-secondary: #55645e;
+}
+.dark .site {
+  --color-border-focus-ring: var(--color-accent-300);
+  --color-background-primary-default: var(--stage-surface);
+  --color-text-secondary: #9fb3ab;
+}
+
+html:has(.site) { scroll-padding-top: 5.5rem; }
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.site) { scroll-behavior: smooth; }
+}
+
+/* ----- Header ---------------------------------------------------------------- */
+.site-sentinel { position: absolute; top: 3rem; height: 1px; width: 1px; }
+
+.site-nav { position: fixed; z-index: 30; inset: 0 0 auto; pointer-events: none; }
+.site-bar {
+  position: relative;
+  display: flex;
+  width: 100%;
+  max-width: 110rem;
+  height: var(--bar-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 auto;
+  padding-inline: var(--gutter);
+  border-radius: 1.25rem;
+  pointer-events: auto;
+  transition:
+    max-width 620ms var(--ease-out),
+    height 620ms var(--ease-out),
+    margin-top 620ms var(--ease-out),
+    padding 620ms var(--ease-out);
+}
+/* The docked surface is a layer, because a gradient can't fade in on the bar itself. */
+.site-bar::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border: 1px solid transparent;
+  border-radius: inherit;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--stage-surface) 90%, transparent), color-mix(in srgb, var(--stage-surface-low) 84%, transparent)) padding-box,
+    var(--plate-bezel) border-box;
+  box-shadow: inset 0 1px 0 var(--stage-sheen), var(--stage-lift);
+  opacity: 0;
+  transition: opacity 320ms ease;
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  backdrop-filter: blur(18px) saturate(1.5);
+}
+.site-home { display: inline-flex; border-radius: 0.625rem; outline: none; }
+.site-home:focus-visible, .site-link:focus-visible, .site-burger[data-focus-visible], .foot-link:focus-visible, .sheet-link:focus-visible, .tray-url:focus-visible { box-shadow: 0 0 0 2px var(--color-border-focus-ring); }
+
+.logo-name { display: inline-block; overflow: hidden; max-width: 6rem; transition: max-width 520ms var(--ease-out), opacity 260ms ease; }
+.site-actions { position: relative; display: flex; align-items: center; justify-content: flex-end; }
+.site-recede {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 14rem;
+  margin-inline-end: 0.5rem;
+  overflow: hidden;
+  /* Room for the segmented control's own ring inside the clip. */
+  padding: 2px;
+  transition: max-width 520ms var(--ease-out), opacity 220ms ease, margin 520ms var(--ease-out);
+}
+.site-login:not(:hover) { background: transparent; color: var(--color-text-primary); }
+.site-start { height: 2.375rem; padding-inline: 0.625rem; border-radius: 0.75rem; }
+
+.site-links { position: absolute; left: 50%; display: none; align-items: center; gap: 0.125rem; transform: translateX(-50%); }
+.site-link {
+  position: relative;
+  border-radius: 0.625rem;
+  padding: 0.4375rem 0.75rem;
+  outline: none;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  transition: color 160ms ease;
+}
+.site-link:hover, .site-link.is-current { color: var(--color-text-primary); }
+/* Sits in the plate rather than on it: recessed, lit from the same side as the buttons. */
+.site-pill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--pill-w, 0);
+  border-radius: 0.625rem;
+  background: var(--stage-recess);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.1), inset 0 0 0 1px var(--stage-edge), 0 1px 0 var(--stage-sheen);
+  opacity: 0;
+  transform: translateX(var(--pill-x, 0));
+  transition: transform 340ms var(--ease-out), width 340ms var(--ease-out), opacity 180ms ease;
+}
+.site-links[data-pill="on"] .site-pill { opacity: 1; }
+
+/* Filled by the scroll timeline: the page reads as one payment settling. */
+.site-progress {
+  position: absolute;
+  inset: auto 1.125rem 0;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity 320ms ease;
+}
+.site-progress::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--spectrum), var(--color-accent-500));
+  transform-origin: left;
+  transform: scaleX(0);
+}
+
+.site-burger {
+  position: relative;
+  display: inline-flex;
+  width: 2.375rem;
+  height: 2.375rem;
+  flex: none;
+  margin-inline-start: 0.5rem;
+  cursor: pointer;
+  border-radius: 0.75rem;
+  outline: none;
+  background: var(--stage-surface);
+  box-shadow: inset 0 1px 0 var(--stage-sheen), 0 0 0 1px var(--stage-edge), 0 1px 2px rgb(0 0 0 / 0.1);
+  transition: translate 180ms var(--ease-out), box-shadow 160ms ease;
+}
+.site-burger[data-pressed] { translate: 0 1px; }
+.site-burger span {
+  position: absolute;
+  left: 0.6875rem;
+  right: 0.6875rem;
+  top: calc(50% - 0.75px);
+  height: 1.5px;
+  border-radius: 1px;
+  background: var(--color-text-primary);
+  transition: transform 320ms var(--ease-out);
+}
+.site-burger span:first-child { transform: translateY(-3px); }
+.site-burger span:last-child { transform: translateY(3px); }
+.site-burger.is-open span:first-child { transform: rotate(45deg); }
+.site-burger.is-open span:last-child { transform: rotate(-45deg); }
+
+.site-nav[data-docked] .site-bar {
+  max-width: calc(100% - 1.5rem);
+  height: 3.5rem;
+  margin-top: 0.625rem;
+  padding-inline: 0.625rem 0.5625rem;
+}
+.site-nav[data-docked] .site-bar::before, .site-nav[data-docked] .site-progress { opacity: 1; }
+
+@supports (animation-timeline: scroll()) {
+  .site-progress::after { animation: site-progress linear both; animation-timeline: scroll(root); }
+}
+@keyframes site-progress { to { transform: scaleX(1); } }
+
+@media (min-width: 1100px) {
+  .site-burger { display: none; }
+  .site-links { display: flex; }
+  .site-recede { display: flex; }
+  .site-start { padding-inline: 0.75rem; }
+  .site-nav[data-docked] .site-bar { max-width: 42rem; }
+  .site-nav[data-docked] .logo-name { max-width: 0; opacity: 0; }
+  .site-nav[data-docked] .site-recede { max-width: 0; margin-inline-end: 0; opacity: 0; pointer-events: none; }
+}
+
+/* ----- Mobile sheet ----------------------------------------------------------- */
+.sheet-overlay { position: fixed; z-index: 40; inset: 0; background: color-mix(in srgb, var(--stage-ground-deep) 60%, transparent); }
+.sheet-overlay[data-entering] { animation: sheet-fade 240ms ease both; }
+.sheet-overlay[data-exiting] { animation: sheet-fade 200ms ease reverse both; }
+.sheet {
+  position: fixed;
+  inset: 0.5rem 0.5rem auto;
+  max-height: calc(100dvh - 1rem);
+  overflow: auto;
+  border: 1px solid transparent;
+  border-radius: 1.5rem;
+  outline: none;
+  background:
+    linear-gradient(180deg, var(--stage-surface), var(--stage-surface-low)) padding-box,
+    var(--plate-bezel) border-box;
+  box-shadow: inset 0 1px 0 var(--stage-sheen), var(--stage-lift);
+}
+.sheet[data-entering] { animation: sheet-drop 420ms var(--ease-out) both; }
+.sheet[data-exiting] { animation: sheet-drop 220ms ease-in reverse both; }
+.sheet-body { position: relative; isolation: isolate; display: flex; min-height: min(36rem, calc(100dvh - 1.125rem)); flex-direction: column; overflow: hidden; border-radius: inherit; outline: none; padding: 0.5625rem 0.625rem 1rem; }
+.sheet-art {
+  position: absolute;
+  z-index: -1;
+  right: -19rem;
+  bottom: -18rem;
+  width: 36rem;
+  aspect-ratio: 1;
+  background: var(--plate-engrave);
+  -webkit-mask: url("/guilloche/rosette.svg") center / contain no-repeat;
+  mask: url("/guilloche/rosette.svg") center / contain no-repeat;
+}
+.sheet-head { display: flex; height: 2.875rem; align-items: center; justify-content: space-between; padding-inline-start: 0.375rem; }
+.sheet-links { display: flex; flex-direction: column; margin-top: 1.25rem; padding-inline: 0.375rem; }
+.sheet-links li + li { border-top: 1px solid var(--plate-line); }
+.sheet-link {
+  display: flex;
+  align-items: baseline;
+  gap: 0.875rem;
+  border-radius: 0.5rem;
+  padding-block: 1rem;
+  outline: none;
+  font-size: 2rem;
+  line-height: 2.25rem;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+  color: var(--color-text-primary);
+}
+.sheet-index { width: 1.5rem; font-size: 0.75rem; line-height: 1; font-weight: 500; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
+.sheet-arrow { align-self: center; width: 1.25rem; height: 1.25rem; margin-inline-start: auto; color: var(--color-foreground-icon-tertiary); }
+.sheet-foot { display: flex; flex-direction: column; gap: 0.75rem; margin-top: auto; padding: 1.5rem 0.375rem 0; }
+.sheet-row { display: flex; align-items: center; justify-content: space-between; }
+.sheet-cta { height: 3rem; border-radius: 0.875rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .sheet[data-entering] .sheet-links li { animation: sheet-link 520ms var(--ease-out) calc(90ms + var(--i) * 50ms) both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet[data-entering], .sheet[data-exiting], .sheet-overlay[data-entering], .sheet-overlay[data-exiting] { animation: none; }
+}
+@keyframes sheet-fade { from { opacity: 0; } }
+@keyframes sheet-drop { from { opacity: 0; transform: translateY(-0.75rem) scale(0.985); } }
+@keyframes sheet-link { from { opacity: 0; transform: translateY(0.625rem); } }
+
+/* ----- Scenes ------------------------------------------------------------------
+ * The ground carries straight on from the hero: same tokens, same bloom, no flat
+ * fill, so the fold is a seam in one surface and not the start of another page.
+ * --------------------------------------------------------------------------- */
+.scenes {
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
+  padding-bottom: var(--scene-gap);
+  background:
+    radial-gradient(60rem 42rem at 50% 12%, var(--stage-bloom), transparent 72%),
+    radial-gradient(60rem 42rem at 50% 62%, var(--stage-bloom), transparent 72%),
+    var(--stage-ground);
+}
+.scenes-seam {
+  position: relative;
+  display: block;
+  height: 3px;
+  border-block: 1px solid var(--plate-line);
+}
+.scenes-port, .plate-port, .foot-port {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  display: flex;
+  width: calc(var(--socket-main) + 0.5rem);
+  height: calc(var(--socket-main) + 0.5rem);
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--stage-recess);
+  box-shadow: 0 0 0 1px var(--plate-line), inset 0 1px 2px rgb(0 0 0 / 0.16), 0 1px 0 var(--stage-sheen);
+  transform: translate(-50%, -50%);
+}
+.scenes-port { top: 50%; }
+.plate-port { display: none; }
+.plate-port.is-top { top: 0; }
+.plate-port.is-bottom { top: 100%; }
+
+.bus { position: absolute; left: 50%; display: block; width: 14px; margin-left: -7px; pointer-events: none; content-visibility: auto; }
+.bus svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.bus .flow-edge { transform: translateX(1px); }
+.bus-spine .flow-lit { stroke-dasharray: 1 1; stroke-dashoffset: 1; opacity: 0.9; }
+.foot-bus .flow-lit { opacity: 0.9; }
+.bus-spine { display: none; top: 0; bottom: 0; z-index: -1; }
+.bus-stub { position: relative; left: auto; display: block; height: 3.5rem; margin: 0.5rem auto -0.5rem; }
+.scene:last-child .bus-stub { display: none; }
+
+.scene {
+  position: relative;
+  display: flex;
+  width: 100%;
+  max-width: 110rem;
+  flex-direction: column;
+  gap: 2rem;
+  margin-inline: auto;
+  padding: var(--scene-gap) var(--gutter) 0;
+}
+.scene + .scene { padding-top: 1.5rem; }
+.scene-head { display: flex; flex-direction: column; gap: 1rem; }
+.scene-title {
+  font-size: clamp(2.75rem, 6vw, 5.5rem);
+  line-height: 1;
+  letter-spacing: -0.038em;
+  font-weight: 570;
+  text-wrap: balance;
+  color: var(--color-text-primary);
+}
+.scene-side { display: flex; flex-direction: column; align-items: flex-start; gap: 1.25rem; }
+.scene-body { max-width: 40ch; font-size: 1.0625rem; line-height: 1.55; color: var(--color-text-secondary); text-wrap: pretty; }
+.scene-cta { height: 2.75rem; padding-inline: 0.75rem; border-radius: 0.8125rem; }
+.scene-plate { padding: 0.625rem; border-radius: 1.75rem; --plate-radius: 1.75rem; gap: 0.625rem; }
+
+@media (min-width: 1100px) {
+  .bus-spine { display: block; }
+  .bus-stub { display: none; }
+  .plate-port { display: flex; }
+  .scene { gap: clamp(2rem, 4vh, 3rem); }
+  .scene + .scene { padding-top: var(--scene-gap); }
+  .scene-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2rem; align-items: end; }
+  .scene-side { flex-direction: row; align-items: flex-end; justify-content: flex-end; gap: 1.75rem; }
+  .scene-body { max-width: 36ch; text-align: end; }
+  .scene-cta { flex: none; }
+  .is-flipped .scene-title { order: 2; text-align: end; }
+  .is-flipped .scene-side { order: 1; justify-content: flex-start; flex-direction: row-reverse; }
+  .is-flipped .scene-body { text-align: start; }
+  .scene-plate { padding: 0.75rem; gap: 0.75rem; }
+}
+
+/* ----- The note ----------------------------------------------------------------
+ * Sized in cqi, so it scales as one printed object. Colours here are ink, not UI:
+ * they do not change with the theme.
+ * --------------------------------------------------------------------------- */
+.note-mount { perspective: 1800px; }
+.note {
+  --mx: 0.5;
+  --my: 0.5;
+  --note-ink: #052019;
+  --note-ink-deep: #021310;
+  --note-line: rgb(0 236 151 / 0.5);
+  --note-cream: #eafff6;
+  --note-dim: rgb(214 255 238 / 0.76);
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  container-type: inline-size;
+  overflow: clip;
+  border-radius: 1.125rem;
+  color: var(--note-cream);
+  background:
+    radial-gradient(60% 120% at 22% 40%, #0b3f30 0%, transparent 72%),
+    radial-gradient(50% 100% at 86% 50%, #0a3a2c 0%, transparent 70%),
+    linear-gradient(180deg, var(--note-ink), var(--note-ink-deep));
+  box-shadow: inset 0 0 0 1px rgb(120 255 205 / 0.16), inset 0 1px 0 rgb(200 255 232 / 0.24), 0 1px 2px rgb(0 0 0 / 0.4);
+  transform: rotateX(calc((var(--my) - 0.5) * -2.4deg)) rotateY(calc((var(--mx) - 0.5) * 3deg));
+  transition: transform 420ms var(--ease-out);
+}
+.note-art {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  overflow: clip;
+  content-visibility: auto;
+  --art-x: 50%;
+  --art-y: 72%;
+  -webkit-mask-image: radial-gradient(58cqi 58cqi at var(--art-x) var(--art-y), #000 22%, transparent 100%);
+  mask-image: radial-gradient(58cqi 58cqi at var(--art-x) var(--art-y), #000 22%, transparent 100%);
+}
+.note-art i {
+  position: absolute;
+  top: var(--art-y);
+  left: var(--art-x);
+  width: 118cqi;
+  aspect-ratio: 1;
+  margin: -59cqi 0 0 -59cqi;
+  background: var(--color-accent-500);
+  opacity: 0.17;
+  -webkit-mask: url("/guilloche/rosette.svg") center / contain no-repeat;
+  mask: url("/guilloche/rosette.svg") center / contain no-repeat;
+}
+.note-art i:nth-child(2) { opacity: 0.13; }
+.note-band {
+  position: absolute;
+  z-index: -1;
+  inset-inline: 0;
+  height: 2.25cqi;
+  min-height: 1.125rem;
+  background: var(--note-line);
+  opacity: 0.9;
+  -webkit-mask: var(--guilloche) 0 50% / auto 100% repeat-x;
+  mask: var(--guilloche) 0 50% / auto 100% repeat-x;
+}
+.note-band.is-top { top: 0.375rem; }
+.note-band.is-bottom { bottom: 0.375rem; }
+.note-frame {
+  position: absolute;
+  z-index: -1;
+  inset: clamp(1.625rem, 3.2cqi, 2.75rem) 0.75rem;
+  border: 1px solid var(--note-line);
+  border-radius: 0.5rem;
+  box-shadow: inset 0 0 0 2px var(--note-ink), inset 0 0 0 3px rgb(0 236 151 / 0.2);
+  opacity: 0.7;
+}
+.note-glare {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(38cqi 38cqi at calc(var(--mx) * 100%) calc(var(--my) * 100%), rgb(190 255 230 / 0.12), transparent 70%);
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+.note:hover .note-glare { opacity: 1; }
+
+.note-body { display: flex; min-width: 0; flex-direction: column; gap: 1.5rem; padding: clamp(2.5rem, 7cqi, 4rem) 1.75rem 1.5rem; }
+.note-who { display: flex; flex-direction: column; }
+.note-merchant { font-size: 0.875rem; line-height: 1.25rem; font-weight: 500; color: var(--note-dim); }
+.note-title { font-size: 1.0625rem; line-height: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+.note-amount {
+  font-size: 15.25cqi;
+  line-height: 0.92;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+  color: var(--note-cream);
+  background: linear-gradient(180deg, #ffffff 18%, #9ff5d2 92%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.note-cents { opacity: 0.62; }
+.note-terms { display: flex; flex-direction: column; gap: 0.375rem; font-size: 0.875rem; line-height: 1.25rem; }
+.note-pay { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.625rem; color: var(--note-cream); font-weight: 500; }
+.note-tokens { display: inline-flex; }
+.note-token { margin-inline-end: -0.3125rem; border-radius: 999px; box-shadow: 0 0 0 2px var(--note-ink); }
+.note-settle { color: var(--note-dim); }
+
+.note-foil {
+  height: 0.25rem;
+  margin-inline: 1.75rem;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--spectrum), #f0820f, #e5ac13, #12b374);
+  background-size: 300% 100%;
+  background-position: calc(var(--mx) * 100%) 0;
+  transition: background-position 300ms ease-out;
+  /* Windowed like a security thread: it surfaces through the paper in short runs. */
+  -webkit-mask: repeating-linear-gradient(90deg, #000 0 1.5rem, transparent 0 2rem);
+  mask: repeating-linear-gradient(90deg, #000 0 1.5rem, transparent 0 2rem);
+}
+
+.note-seal { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 2rem 1.75rem 3.25rem; }
+.note-seal-ring {
+  position: absolute;
+  top: 2rem;
+  left: 50%;
+  width: 16rem;
+  aspect-ratio: 1;
+  margin: -2.25rem 0 0 -8rem;
+  background: var(--color-accent-500);
+  opacity: 0.8;
+  -webkit-mask: url("/guilloche/rosette-ring.svg") center / contain no-repeat;
+  mask: url("/guilloche/rosette-ring.svg") center / contain no-repeat;
+}
+.note-qr {
+  position: relative;
+  display: block;
+  flex: none;
+  border-radius: 0.875rem;
+  padding: 0.5rem;
+  color: #04130d;
+  background: #f4fff9;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.5), 0 0 0 5px rgb(2 19 16 / 0.9), 0 0 0 6px rgb(0 236 151 / 0.5);
+}
+.note-qr svg { display: block; width: 9.25rem; height: 9.25rem; }
+.note-serial { position: relative; margin-top: 2.25rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; line-height: 1rem; letter-spacing: 0.04em; color: var(--note-dim); }
+
+/* A printer's specimen mark, in the overprint red real specimens use. It is the page's honesty, so it is legible. */
+.note-stamp {
+  position: absolute;
+  top: clamp(2.5rem, 5.2cqi, 4.25rem);
+  right: 1.5rem;
+  rotate: -7deg;
+  border: 1.5px solid #ff8a66;
+  border-radius: 0.3125rem;
+  padding: 0.0625rem 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #ff9d80;
+  box-shadow: inset 0 0 0 2px var(--note-ink), inset 0 0 0 3px rgb(255 138 102 / 0.5);
+}
+.note-micro {
+  position: absolute;
+  inset: auto 1.125rem clamp(1.875rem, 3.5cqi, 3rem);
+  overflow: hidden;
+  white-space: pre;
+  font-size: 5px;
+  line-height: 6px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: rgb(0 236 151 / 0.72);
+}
+
+@container (min-width: 44rem) {
+  .note-art { --art-x: 83.75%; --art-y: 50%; }
+  .note-body { grid-area: 1 / 1; min-height: 37.5cqi; padding: 6cqi 5cqi 5.5cqi; justify-content: space-between; gap: 2cqi; }
+  .note-amount { font-size: 11.6cqi; }
+  .note-merchant { font-size: clamp(0.875rem, 1.3cqi, 1.125rem); line-height: 1.4; }
+  .note-title { font-size: clamp(1.0625rem, 1.9cqi, 1.625rem); line-height: 1.3; }
+  .note-terms { font-size: clamp(0.875rem, 1.25cqi, 1.0625rem); line-height: 1.4; }
+  .note-foil { position: absolute; top: 3.2cqi; bottom: 3.2cqi; left: 67.5%; width: 0.5cqi; height: auto; margin: 0; background: linear-gradient(180deg, var(--spectrum), #f0820f, #e5ac13, #12b374); background-size: 100% 300%; background-position: 0 calc(var(--my) * 100%); -webkit-mask: repeating-linear-gradient(180deg, #000 0 3cqi, transparent 0 3.9cqi); mask: repeating-linear-gradient(180deg, #000 0 3cqi, transparent 0 3.9cqi); }
+  .note-seal { position: absolute; top: 0; bottom: 0; right: 0; width: 32.5%; padding: 0; justify-content: center; gap: 0; }
+  .note-seal-ring { top: 50%; width: 28cqi; margin: -14cqi 0 0 -14cqi; }
+  .note-qr svg { width: 12.5cqi; height: 12.5cqi; }
+  .note-qr { padding: 0.8cqi; border-radius: 1.2cqi; }
+  .note-serial { position: absolute; bottom: 4.6cqi; margin: 0; padding: 0.125rem 0.5rem; border-radius: 0.25rem; background: var(--note-ink-deep); font-size: clamp(0.6875rem, 0.95cqi, 0.8125rem); }
+  .note-stamp { top: 6.2cqi; right: auto; left: 50cqi; font-size: clamp(0.8125rem, 1.25cqi, 1.0625rem); line-height: 1.5; }
+}
+
+.tray { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.5rem; padding: 0.125rem; }
+.tray-url {
+  grid-column: 1 / -1;
+  display: block;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  padding: 0.5625rem 0.875rem;
+  outline: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-primary);
+  background: var(--stage-well);
+  box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--stage-edge), 0 1px 0 var(--stage-sheen);
+  transition: color 140ms ease;
+}
+.tray-url:hover { text-decoration: underline; text-underline-offset: 0.2em; }
+.tray-action { height: 2.5rem; border-radius: 0.75rem; }
+@media (min-width: 640px) {
+  .tray { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .tray-url { grid-column: auto; }
+}
+
+/* ----- The console: controls beside a real page -------------------------------- */
+.console { display: grid; grid-template-columns: minmax(0, 1fr); }
+.console-controls { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; padding: 0.625rem 0.5rem 0.5rem; }
+.console-control { display: flex; flex-direction: column; gap: 0.5rem; }
+.console-rule { display: none; }
+.console-embed { display: none; flex-direction: column; gap: 0.5rem; }
+.console-code {
+  overflow: hidden;
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  white-space: pre;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  line-height: 1.125rem;
+  color: var(--color-text-secondary);
+  background: var(--stage-well);
+  box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--stage-edge);
+}
+
+.swatches { display: flex; align-items: center; gap: 0.5rem; }
+.swatch {
+  position: relative;
+  display: flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  cursor: pointer;
+  outline: none;
+  background: var(--socket-metal);
+  box-shadow: 0 0 0 0.5px var(--stage-edge), 0 1px 2px rgb(0 0 0 / 0.22);
+  transition: box-shadow 180ms ease, translate 180ms var(--ease-out);
+}
+.swatch span { width: calc(100% - 6px); height: calc(100% - 6px); border-radius: 999px; box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.4), inset 0 -1px 0 rgb(255 255 255 / 0.25); transition: box-shadow 180ms ease; }
+.swatch:hover { translate: 0 -1px; }
+.swatch.is-selected { box-shadow: 0 0 0 2px var(--stage-surface), 0 0 0 3.5px var(--color-text-primary), 0 1px 2px rgb(0 0 0 / 0.22); }
+.swatch.is-focus, .segment.is-focus { outline: 2px solid var(--color-border-focus-ring); outline-offset: 3px; }
+
+.segments { display: inline-flex; gap: 0.125rem; align-self: flex-start; border-radius: 0.75rem; padding: 0.1875rem; background: var(--stage-well); box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--stage-edge), 0 1px 0 var(--stage-sheen); }
+.segment { border-radius: 0.5625rem; padding: 0.3125rem 0.75rem; cursor: pointer; outline: none; font-size: 0.8125rem; line-height: 1.25rem; font-weight: 500; color: var(--color-text-secondary); transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease; }
+.segment:hover { color: var(--color-text-primary); }
+.segment-asset { display: inline-flex; align-items: center; gap: 0.25rem; padding-inline: 0.3125rem 0.4375rem; font-size: 0.75rem; }
+.segment.is-selected { background: var(--stage-surface); color: var(--color-text-primary); box-shadow: inset 0 1px 0 var(--stage-sheen), 0 0 0 1px var(--stage-edge), 0 1px 2px rgb(0 0 0 / 0.14); }
+
+.shop {
+  --shop-line: color-mix(in srgb, var(--brand) 24%, var(--stage-edge));
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1.125rem;
+  background: var(--shop-ground);
+  box-shadow: inset 0 0 0 1px var(--shop-line), inset 0 1px 3px var(--well-shade);
+}
+.shop-bar { position: relative; display: flex; height: 2.5rem; flex: none; align-items: center; justify-content: center; border-bottom: 1px solid var(--shop-line); }
+.shop-lights { position: absolute; inset-inline-start: 0.875rem; display: none; gap: 0.375rem; }
+.shop-lights i { width: 0.5625rem; height: 0.5625rem; border-radius: 999px; background: var(--socket-metal); box-shadow: 0 0 0 0.5px var(--stage-edge); }
+.shop-url { display: inline-flex; align-items: center; gap: 0.25rem; border-radius: 999px; padding: 0.125rem 0.75rem; font-size: 0.75rem; line-height: 1rem; color: var(--color-text-secondary); background: var(--stage-surface); box-shadow: 0 0 0 1px var(--stage-edge); }
+.shop-page { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr); gap: 0.875rem; padding: 0.75rem; }
+.shop-product { display: flex; min-width: 0; flex-direction: column; gap: 0.75rem; }
+.shop-wall { display: flex; flex: 1; min-height: 11rem; align-items: center; justify-content: center; border-radius: 0.75rem; padding: 1.25rem; background: color-mix(in srgb, var(--brand) 13%, var(--shop-wall)); transition: background-color 280ms ease; }
+.shop-print {
+  --print-ink: color-mix(in srgb, var(--brand) 62%, #03140e);
+  position: relative;
+  display: block;
+  width: min(52%, 10rem);
+  aspect-ratio: 0.74;
+  border-radius: 2px;
+  background: #fbfbf6;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.06), 0 0 0 6px #fff, 0 0 0 7px rgb(0 0 0 / 0.09), 0 18px 30px -12px rgb(0 0 0 / 0.34), 0 4px 8px -2px rgb(0 0 0 / 0.18);
+}
+.shop-print i {
+  position: absolute;
+  inset: 8%;
+  background: var(--print-ink);
+  transition: background-color 280ms ease;
+  -webkit-mask: url("/guilloche/rosette-print.svg") center / contain no-repeat;
+  mask: url("/guilloche/rosette-print.svg") center / contain no-repeat;
+}
+.shop-caption { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 0.75rem; padding-inline: 0.25rem; }
+.shop-widget { align-self: center; max-width: none; padding: 1rem; gap: 0.875rem; border-color: var(--shop-line); background: var(--stage-surface); box-shadow: var(--stage-lift); }
+.shop-widget header { gap: 0.625rem; }
+
+@media (min-width: 640px) {
+  .shop-page { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 1rem; padding: 1rem; }
+  .shop-lights { display: flex; }
+}
+@media (min-width: 1100px) {
+  .console { grid-template-columns: 20rem minmax(0, 1fr); gap: 0.75rem; }
+  .console-controls { flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; gap: 1.5rem; padding: 0.75rem 0.5rem 0.75rem 0.875rem; }
+  .console-rule, .console-embed { display: flex; }
+  .console-rule { display: block; }
+  /* The snippet is the column's one flexible row, so every control keeps its place and nothing floats. */
+  .console-embed { flex: 1; }
+  .console-code { flex: 1; }
+  .shop-page { grid-template-columns: minmax(0, 1fr) minmax(19rem, 24rem); padding: 1.25rem; gap: 1.25rem; }
+  .shop-wall { min-height: 22rem; }
+  .shop-print { width: min(80%, 16rem); }
+}
+@media (min-width: 1500px) {
+  .shop-page { padding: 1.75rem; gap: 2rem; }
+  .shop-print { width: min(52%, 19rem); }
+}
+
+/* ----- Footer ------------------------------------------------------------------
+ * The page's last frame, ink in both themes. It rises over the ground as a plate
+ * with the rosette's lines at full size and the wordmark as a window onto them.
+ * --------------------------------------------------------------------------- */
+.foot {
+  --color-text-secondary: rgb(214 255 238 / 0.76);
+  --color-border-focus-ring: var(--color-accent-300);
+  --color-background-primary-default: #0a2a20;
+  --color-border-button-default: rgb(190 255 230 / 0.2);
+  position: relative;
+  isolation: isolate;
+  margin-top: -2rem;
+  border-radius: 2rem 2rem 0 0;
+  background:
+    radial-gradient(70rem 40rem at 50% 12%, rgb(0 236 151 / 0.17), transparent 70%),
+    linear-gradient(180deg, #05221a 0%, #02110d 60%, #010a08 100%);
+  box-shadow: inset 0 1px 0 rgb(190 255 230 / 0.28), inset 0 0 0 1px rgb(190 255 230 / 0.06), 0 -20px 60px -24px rgb(0 40 28 / 0.5);
+}
+.foot-port { top: 0; z-index: 3; }
+.foot-art {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  overflow: clip;
+  content-visibility: auto;
+  border-radius: inherit;
+  -webkit-mask-image: linear-gradient(180deg, #000 40%, transparent 78%);
+  mask-image: linear-gradient(180deg, #000 40%, transparent 78%);
+}
+.foot-art i {
+  position: absolute;
+  top: 8rem;
+  left: 50%;
+  width: max(150vw, 72rem);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background: var(--color-accent-500);
+  opacity: 0.09;
+  -webkit-mask: url("/guilloche/rosette.svg") center / contain no-repeat;
+  mask: url("/guilloche/rosette.svg") center / contain no-repeat;
+}
+.foot-art i:nth-child(2) { opacity: 0.07; }
+.foot-frame { position: relative; z-index: 1; display: flex; max-width: 110rem; flex-direction: column; margin-inline: auto; padding: 0 var(--gutter) 1.25rem; }
+.foot-bus { top: 0; height: 5.5rem; }
+.foot-close { display: flex; flex-direction: column; align-items: center; gap: 1.75rem; padding-top: 5.25rem; text-align: center; }
+.foot-seal { position: relative; display: flex; width: 5.5rem; height: 5.5rem; align-items: center; justify-content: center; }
+.foot-seal-ring { position: absolute; inset: -1.25rem; background: var(--color-accent-500); opacity: 0.9; -webkit-mask: url("/guilloche/rosette-ring.svg") center / contain no-repeat; mask: url("/guilloche/rosette-ring.svg") center / contain no-repeat; }
+.foot-seal-key { position: relative; display: flex; width: 3.25rem; height: 3.25rem; align-items: center; justify-content: center; border-radius: 999px; color: var(--color-text-on-accent); }
+.foot-title {
+  font-size: clamp(3rem, 8vw, 7.5rem);
+  line-height: 0.98;
+  letter-spacing: -0.042em;
+  font-weight: 570;
+  color: var(--color-text-primary);
+  text-wrap: balance;
+}
+.foot-actions { display: flex; width: 100%; max-width: 30rem; gap: 0.5rem; }
+.foot-nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem 1rem; margin-top: clamp(3.5rem, 9vh, 6rem); }
+.foot-link { border-radius: 0.375rem; padding-inline: 0.5rem; outline: none; font-size: 0.9375rem; line-height: 1.75rem; font-weight: 500; color: var(--color-text-secondary); transition: color 140ms ease; }
+.foot-link:hover { color: var(--color-text-primary); }
+
+.foot-word {
+  position: relative;
+  aspect-ratio: 3995 / 946;
+  margin-top: clamp(1.5rem, 4vh, 2.5rem);
+  overflow: clip;
+  content-visibility: auto;
+  background: linear-gradient(180deg, #e6fff5 0%, #6ff2c4 44%, #12a374 100%);
+  -webkit-mask: url("/guilloche/wordmark.svg") center / contain no-repeat;
+  mask: url("/guilloche/wordmark.svg") center / contain no-repeat;
+}
+.foot-word i {
+  position: absolute;
+  top: 190%;
+  left: 50%;
+  width: 300%;
+  aspect-ratio: 1;
+  background: #021310;
+  opacity: 0.52;
+  -webkit-mask: url("/guilloche/rosette.svg") center / contain no-repeat;
+  mask: url("/guilloche/rosette.svg") center / contain no-repeat;
+  transform: translate(-50%, -50%);
+}
+/* Two centres, not one: with a shared centre the rings cancel on the axis and the middle letters go flat.
+ * Offset, the fringes run through the whole word. */
+.foot-word i:nth-child(1) { left: 34%; }
+.foot-word i:nth-child(2) { left: 66%; opacity: 0.4; }
+
+.foot-micro {
+  margin-top: 1.25rem;
+  overflow: hidden;
+  white-space: pre;
+  font-size: 5px;
+  line-height: 7px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: rgb(0 236 151 / 0.56);
+  border-block: 1px solid rgb(0 236 151 / 0.2);
+  padding-block: 0.1875rem;
+}
+.foot-legal { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.875rem; font-size: 0.8125rem; line-height: 1.25rem; color: var(--color-text-secondary); }
+.foot-powered { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--color-text-primary); font-weight: 500; }
+@media (min-width: 900px) {
+  .foot { border-radius: 2.75rem 2.75rem 0 0; margin-top: -2.75rem; }
+  .foot-legal { flex-direction: row; align-items: center; justify-content: space-between; gap: 2rem; }
+  .foot-actions { width: auto; justify-content: center; }
+}
+
+/* ----- Scroll choreography ------------------------------------------------------
+ * Compositor only: scroll timelines drive opacity and transforms and nothing else.
+ * In each rosette pair one layer turns over a still one, which runs the moire at half
+ * the layers of turning both. Without scroll timelines it turns on a slow clock, and
+ * reveals are simply already there.
+ *
+ * The art boxes must stay `overflow: clip`. `hidden` makes them the scroll container
+ * that view() resolves to, and the rosettes silently stop turning. `content-visibility`
+ * drops their layers while offscreen, which is why nothing here needs `will-change`.
+ * --------------------------------------------------------------------------- */
+.note-art i:nth-child(2), .foot-art i:nth-child(2), .foot-word i:nth-child(2) { --turn: -16deg; }
+.foot-art i, .foot-word i { --at: translate(-50%, -50%); }
+
+@keyframes rosette-turn { from { transform: var(--at, translate(0, 0)) rotate(calc(var(--turn) * -1)); } to { transform: var(--at, translate(0, 0)) rotate(var(--turn)); } }
+@keyframes rosette-clock { to { transform: var(--at, translate(0, 0)) rotate(calc(var(--turn) * 4)); } }
+@keyframes bus-fill { to { stroke-dashoffset: 0; } }
+@keyframes scene-reveal { from { opacity: 0; translate: 0 2.5rem; } }
+@keyframes note-lay { from { opacity: 0.4; transform: rotateX(18deg) scale(0.96); } }
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports not (animation-timeline: view()) {
+    .note-art i:nth-child(2), .foot-art i:nth-child(2), .foot-word i:nth-child(2) { animation: rosette-clock 90s linear infinite alternate; }
+  }
+  @supports (animation-timeline: view()) {
+    .note-art i:nth-child(2), .foot-art i:nth-child(2), .foot-word i:nth-child(2) { animation: rosette-turn linear both; animation-timeline: view(); }
+    .bus-spine .flow-lit { animation: bus-fill linear both; animation-timeline: scroll(root); }
+    .scene-head { animation: scene-reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 70%; }
+    .reveal { animation: scene-reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 30%; }
+    .note-mount { transform-origin: 50% 100%; animation: note-lay linear both; animation-timeline: view(); animation-range: entry 0% entry 60%; }
+    .foot-close { animation: scene-reveal linear both; animation-timeline: view(); animation-range: entry 10% entry 60%; }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .note { transform: none; transition: none; }
+}

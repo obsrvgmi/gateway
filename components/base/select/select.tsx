@@ -102,6 +102,9 @@ export function Select<T extends object>({
   return (
     <AriaSelect
       ref={ref}
+      // The slot that finds <Label> is resolved in a layout effect, which doesn't run for a route
+      // Next keeps in a hidden Activity, so React Aria warned that a labelled Select had no label.
+      aria-label={typeof label === "string" ? label : undefined}
       {...props}
       isOpen={isOpen}
       onOpenChange={(o) => allowOpenChange(o) && setIsOpen(o)}

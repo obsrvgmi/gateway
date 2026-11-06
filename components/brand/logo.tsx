@@ -18,10 +18,10 @@ export function LogoMark({ className }: { className?: string }) {
 export function Logo({ className, showName = true }: { className?: string; showName?: boolean }) {
   return (
     <span className={cx("inline-flex items-center gap-2 text-text-primary", className)}>
-      <span className="flex size-7 items-center justify-center rounded-lg bg-accent-500 text-text-on-accent">
+      <span className="logo-key flex size-7 items-center justify-center rounded-lg text-text-on-accent">
         <LogoMark className="size-5" />
       </span>
-      {showName && <span className="text-headline-semibold tracking-[-0.015em]">{SITE.name}</span>}
+      {showName && <span className="logo-name text-headline-semibold tracking-[-0.015em]">{SITE.name}</span>}
     </span>
   );
 }

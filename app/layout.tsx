@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { Toaster } from "@/components/base/toast/toast";
+import { LazyToaster } from "@/components/lazy-toaster";
 import { SITE } from "@/lib/site";
 import "@/styles/globals.css";
 
@@ -22,7 +22,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="flex min-h-full flex-col">
         {children}
-        <Toaster />
+        <LazyToaster />
       </body>
     </html>
   );

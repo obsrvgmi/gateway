@@ -17,6 +17,7 @@ export function formatToken(amount: number, symbol: AssetSymbol) {
   return `${amount.toLocaleString("en-US", { minimumFractionDigits: Math.min(digits, 2), maximumFractionDigits: digits })} ${symbol}`;
 }
 
+/** Hex addresses shorten. A named account like lumen-studio.near is only readable whole. */
 export function shortAddress(address: string) {
-  return address.length > 14 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
+  return address.startsWith("0x") && address.length > 14 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
 }

@@ -3,6 +3,7 @@ const whole = new Intl.NumberFormat("en-US");
 // Pinned to UTC like lib/format.ts. Every dashboard timestamp is UTC and says so.
 const dateTime = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC" });
 const stamp = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC" });
+const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const secondsStamp = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZone: "UTC" });
 
 export const formatCompactUsd = (value: number) => compact.format(value);
@@ -13,6 +14,7 @@ export const formatSeconds = (value: number | null) => (value === null ? "No dat
 export const formatStamp = (iso: string) => `${dateTime.format(new Date(iso))} UTC`;
 /** Date and time without the zone, for columns already headed "UTC". */
 export const formatRowDate = (iso: string) => stamp.format(new Date(iso));
+export const formatDay = (iso: string) => day.format(new Date(iso));
 export const formatClock = (iso: string) => `${secondsStamp.format(new Date(iso))} UTC`;
 
 export function relativeTime(iso: string, now: number) {

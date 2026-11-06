@@ -1,5 +1,6 @@
 import { quote } from "./assets";
-import type { AssetSymbol, GatewayState, Payment, PaymentLink, PaymentStatus, Widget } from "./types";
+import { payoutFee } from "./payouts";
+import type { AssetSymbol, GatewayState, Payment, PaymentLink, PaymentStatus, Payout, Widget, WidgetSuccess } from "./types";
 
 /** Every mock date and metric window is measured from this instant. */
 export const DEMO_NOW = Date.UTC(2026, 10, 5, 18, 0, 0);
@@ -35,11 +36,15 @@ const LINK_TRAITS: Record<string, { weight: number; closedDaysAgo?: number }> = 
   lnk_k2p7wq: { weight: 0.025 },
 };
 
+const RECEIPT: WidgetSuccess = { mode: "receipt", message: "", url: "" };
+/** What the builder starts from, and what the seeded widgets don't override. */
+export const WIDGET_DEFAULTS = { acceptedAssets: ["ETH", "BTC", "SOL", "NEAR", "USDT", "USDC", "BNB", "ARB"] as AssetSymbol[], presets: [] as number[], displayName: "", logo: "", collectEmail: false, success: RECEIPT };
+
 const WIDGETS: Widget[] = [
-  { id: "wgt_shop01", name: "Storefront checkout", site: "shop.lumen.studio", status: "live", theme: "light", accent: "#00EC97", radius: "rounded", amount: null, receiveAsset: "USDC", buttonLabel: "Pay now", showBranding: true, createdAt: daysAgo(726) },
-  { id: "wgt_docs02", name: "Docs donation", site: "docs.lumen.studio", status: "live", theme: "dark", accent: "#7c3aed", radius: "soft", amount: 25, receiveAsset: "USDC", buttonLabel: "Support us", showBranding: true, createdAt: daysAgo(450) },
-  { id: "wgt_lrn03", name: "Course enrollment", site: "learn.lumen.studio", status: "live", theme: "auto", accent: "#059669", radius: "rounded", amount: 290, receiveAsset: "USDC", buttonLabel: "Enroll", showBranding: false, createdAt: daysAgo(330) },
-  { id: "wgt_mem04", name: "Membership renewal", site: "club.lumen.studio", status: "paused", theme: "light", accent: "#ea580c", radius: "sharp", amount: 120, receiveAsset: "USDT", buttonLabel: "Renew", showBranding: true, createdAt: daysAgo(280) },
+  { id: "wgt_shop01", name: "Storefront checkout", site: "shop.lumen.studio", status: "live", theme: "light", accent: "#00EC97", radius: "rounded", amount: null, receiveAsset: "USDC", buttonLabel: "Pay now", showBranding: true, ...WIDGET_DEFAULTS, presets: [29, 79, 240], collectEmail: true, createdAt: daysAgo(726) },
+  { id: "wgt_docs02", name: "Docs donation", site: "docs.lumen.studio", status: "live", theme: "dark", accent: "#7c3aed", radius: "soft", amount: 25, receiveAsset: "USDC", buttonLabel: "Support us", showBranding: true, ...WIDGET_DEFAULTS, acceptedAssets: ["USDC", "USDT", "ETH", "SOL"], success: { mode: "message", message: "Thank you. This keeps the docs free.", url: "" }, createdAt: daysAgo(450) },
+  { id: "wgt_lrn03", name: "Course enrollment", site: "learn.lumen.studio", status: "live", theme: "auto", accent: "#059669", radius: "rounded", amount: 290, receiveAsset: "USDC", buttonLabel: "Enroll", showBranding: false, ...WIDGET_DEFAULTS, collectEmail: true, success: { mode: "redirect", message: "", url: "https://learn.lumen.studio/welcome" }, createdAt: daysAgo(330) },
+  { id: "wgt_mem04", name: "Membership renewal", site: "club.lumen.studio", status: "paused", theme: "light", accent: "#ea580c", radius: "sharp", amount: 120, receiveAsset: "USDT", buttonLabel: "Renew", showBranding: true, ...WIDGET_DEFAULTS, createdAt: daysAgo(280) },
 ];
 
 const WIDGET_TRAITS: Record<string, { weight: number; closedDaysAgo?: number }> = {
@@ -156,10 +161,70 @@ function generatePayments(): Payment[] {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+const SEED_HOLD_DAYS = 3;
+const TREASURY = { id: "dst_treasury", label: "Treasury", address: "lumen-studio.near" };
+const OPERATIONS = { id: "dst_ops", label: "Operations", address: "0x7f3e91c05ab84d26e1f09c7d3ab2e486c10d5e3a" };
+
+/**
+ * Derived from the payments above, so the RNG sequence is untouched and every chart stays as it was.
+ * One batch each Monday 09:00 UTC, per asset, of what had cleared the hold by then. The newest USDT
+ * batch failed, so a fresh account has one real thing to deal with.
+ */
+function generatePayouts(payments: Payment[]): Payout[] {
+  const settled = payments.filter((p) => p.status === "settled").map((p) => ({ ...p, time: new Date(p.createdAt).getTime() })).sort((a, b) => a.time - b.time);
+  const payouts: Payout[] = [];
+  // 2026-11-02 was a Monday.
+  const lastMonday = Date.UTC(2026, 10, 2, 9, 0, 0);
+  const earliest = settled[0]?.time ?? DEMO_NOW;
+  const mondays: number[] = [];
+  for (let at = lastMonday; at > earliest; at -= 7 * DAY) mondays.unshift(at);
+  let cursor = 0;
+  for (const monday of mondays) {
+    const cutoff = monday - SEED_HOLD_DAYS * DAY;
+    const batch = new Map<AssetSymbol, { amount: number; usd: number; count: number }>();
+    while (cursor < settled.length && settled[cursor].time < cutoff) {
+      const payment = settled[cursor];
+      const entry = batch.get(payment.receiveAsset) ?? { amount: 0, usd: 0, count: 0 };
+      batch.set(payment.receiveAsset, { amount: entry.amount + payment.receiveAmount, usd: entry.usd + payment.usd, count: entry.count + 1 });
+      cursor += 1;
+    }
+    for (const [asset, entry] of batch) {
+      payouts.push({
+        id: `pyt_${monday.toString(36).slice(-6)}${asset.toLowerCase()}`,
+        asset,
+        amount: entry.amount,
+        receiveAsset: asset,
+        receiveAmount: entry.amount,
+        usd: entry.usd,
+        feeUsd: payoutFee(asset, asset, entry.usd),
+        destinationId: TREASURY.id,
+        destinationLabel: TREASURY.label,
+        destinationAddress: TREASURY.address,
+        status: "sent",
+        trigger: "scheduled",
+        paymentCount: entry.count,
+        reference: `sim_${(monday / 1000).toString(36)}${asset.toLowerCase()}`,
+        createdAt: new Date(monday).toISOString(),
+        completedAt: new Date(monday + 94_000).toISOString(),
+      });
+    }
+  }
+  const newest = payouts.findLast((payout) => payout.asset === "USDT");
+  if (newest) {
+    newest.status = "failed";
+    newest.completedAt = null;
+    newest.failureReason = "The route quote expired before it filled. Nothing left your settlement account.";
+  }
+  return payouts.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+const SEED_PAYMENTS = generatePayments();
+
 export const SEED_STATE: GatewayState = {
   links: LINKS,
   widgets: WIDGETS,
-  payments: generatePayments(),
+  payments: SEED_PAYMENTS,
+  payouts: generatePayouts(SEED_PAYMENTS),
   settings: {
     businessName: "Lumen Studio",
     receiveAsset: "USDC",
@@ -179,8 +244,9 @@ export const SEED_STATE: GatewayState = {
     ],
     branding: { accent: "#00EC97", supportEmail: "support@lumen.studio", statementName: "LUMEN STUDIO" },
     notifications: { settled: true, processing: true, refunded: true, expired: true, links: true },
+    payouts: { schedule: "weekly", holdDays: SEED_HOLD_DAYS, minimumUsd: 100, destinations: [TREASURY, OPERATIONS], defaultDestinationId: TREASURY.id },
   },
   setupDismissed: false,
 };
 
-export const EMPTY_STATE: GatewayState = { ...SEED_STATE, links: [], widgets: [], payments: [], setupDismissed: false };
+export const EMPTY_STATE: GatewayState = { ...SEED_STATE, links: [], widgets: [], payments: [], payouts: [], setupDismissed: false };

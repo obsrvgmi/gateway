@@ -2,10 +2,10 @@
 
 import { useSyncExternalStore } from "react";
 import { DEMO_NOW, EMPTY_STATE, SEED_STATE } from "./seed";
-import type { ApiKey, GatewayState, NotificationPrefs, Payment, PaymentLink, Settings, TeamMember, Webhook, Widget } from "./types";
+import type { ApiKey, GatewayState, NotificationPrefs, Payment, PaymentLink, Payout, PayoutDestination, PayoutSettings, Settings, TeamMember, Webhook, Widget } from "./types";
 
-const STORAGE_KEY = "gateway:demo-state:v2";
-const STALE_KEYS = ["gateway:demo-state:v1"];
+const STORAGE_KEY = "gateway:demo-state:v3";
+const STALE_KEYS = ["gateway:demo-state:v1", "gateway:demo-state:v2"];
 
 let state = SEED_STATE;
 let restored = false;
@@ -27,15 +27,20 @@ function commit(next: GatewayState) {
 
 function isGatewayState(value: unknown): value is GatewayState {
   const candidate = value as Partial<GatewayState> | null;
-  return Boolean(candidate && Array.isArray(candidate.links) && Array.isArray(candidate.widgets) && Array.isArray(candidate.payments) && candidate.settings);
+  return Boolean(candidate && Array.isArray(candidate.links) && Array.isArray(candidate.widgets) && Array.isArray(candidate.payments) && Array.isArray(candidate.payouts) && candidate.settings?.payouts);
 }
 
 /** A simulated payment can't outlive the page that was driving it, so it lands on restore. */
 function finishSimulated(saved: GatewayState): GatewayState {
-  if (!saved.payments.some((payment) => payment.simulated && payment.status === "processing")) return saved;
   return {
     ...saved,
-    payments: saved.payments.map((payment) => (payment.simulated && payment.status === "processing" ? { ...payment, status: "settled", settleSeconds: 24 } : payment)),
+    payments: saved.payments.some((payment) => payment.simulated && payment.status === "processing")
+      ? saved.payments.map((payment) => (payment.simulated && payment.status === "processing" ? { ...payment, status: "settled", settleSeconds: 24 } : payment))
+      : saved.payments,
+    // Same for a payout whose timer died with its tab.
+    payouts: saved.payouts.some((payout) => payout.status === "processing")
+      ? saved.payouts.map((payout) => (payout.status === "processing" ? { ...payout, status: "sent", completedAt: payout.createdAt } : payout))
+      : saved.payouts,
   };
 }
 
@@ -144,6 +149,30 @@ export const actions = {
   updateSettings(patch: Partial<Settings>) {
     commit({ ...state, settings: { ...state.settings, ...patch } });
   },
+  addPayout(payout: Payout) {
+    commit({ ...state, payouts: [{ ...payout, createdAt: nextPaymentTime(state.payments) }, ...state.payouts] });
+  },
+  updatePayout(id: string, patch: Partial<Payout>) {
+    commit({ ...state, payouts: state.payouts.map((payout) => (payout.id === id ? { ...payout, ...patch } : payout)) });
+  },
+  updatePayoutSettings(patch: Partial<PayoutSettings>) {
+    commit({ ...state, settings: { ...state.settings, payouts: { ...state.settings.payouts, ...patch } } });
+  },
+  addDestination(destination: PayoutDestination) {
+    const { payouts } = state.settings;
+    commit({ ...state, settings: { ...state.settings, payouts: { ...payouts, destinations: [...payouts.destinations, destination] } } });
+  },
+  /** `walletAddress` is the default destination's address, kept in step for everything that shows it. */
+  setDefaultDestination(id: string) {
+    const destination = state.settings.payouts.destinations.find((item) => item.id === id);
+    if (!destination) return;
+    commit({ ...state, settings: { ...state.settings, walletAddress: destination.address, payouts: { ...state.settings.payouts, defaultDestinationId: id } } });
+  },
+  removeDestination(id: string) {
+    const { payouts } = state.settings;
+    if (id === payouts.defaultDestinationId) return;
+    commit({ ...state, settings: { ...state.settings, payouts: { ...payouts, destinations: payouts.destinations.filter((item) => item.id !== id) } } });
+  },
   updateNotifications(patch: Partial<NotificationPrefs>) {
     commit({ ...state, settings: { ...state.settings, notifications: { ...state.settings.notifications, ...patch } } });
   },
@@ -173,6 +202,13 @@ export const actions = {
   },
   dismissSetup() {
     commit({ ...state, setupDismissed: true });
+  },
+  showSetup() {
+    commit({ ...state, setupDismissed: false });
+  },
+  /** Puts back a state read from `getGateway()`, for undoing a clear or a restore. */
+  restoreSnapshot(snapshot: GatewayState) {
+    commit(snapshot);
   },
   clearDemoData() {
     commit({ ...EMPTY_STATE, settings: state.settings });

@@ -300,7 +300,8 @@ export function Input({
       // only for unlabelled fields that don't provide one.
       aria-label={
         textFieldProps["aria-label"] ??
-        (!label && typeof placeholder === "string" ? placeholder : undefined)
+        // A string label too: see Select. A hidden Activity skips the effect that finds <Label>.
+        (typeof label === "string" ? label : typeof placeholder === "string" ? placeholder : undefined)
       }
     >
       {({ isRequired, isInvalid }) => (

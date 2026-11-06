@@ -1,7 +1,7 @@
 {
   "name": "gateway",
   "version": "0.1.0",
-  "description": "Frontend mock of a crypto payment gateway: payment links, hosted checkout and an embeddable widget. Customers pay in any asset, merchants receive their choice via NEAR Intents.",
+  "description": "Prototype crypto payment gateway: payment links, checkout widget and dashboard. Frontend-only, no real payments.",
   "keywords": [
     "crypto-payments",
     "payment-gateway",
@@ -17,7 +17,8 @@
     "boardui",
     "react-aria",
     "app-router",
-    "mock-ui"
+    "mock-ui",
+    "prototype"
   ],
   "private": true,
   "scripts": {

@@ -1,16 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { QRCodeSVG } from "qrcode.react";
-import { getLocalTimeZone, today, type CalendarDate } from "@internationalized/date";
-import { RiAddLine, RiCheckLine, RiExternalLinkLine } from "@remixicon/react";
+import { getLocalTimeZone, parseDate, today, type CalendarDate } from "@internationalized/date";
+import { RiAddLine, RiCheckLine, RiExternalLinkLine, RiLinkUnlinkM, RiSaveLine } from "@remixicon/react";
 import { Button } from "@/components/base/buttons/button";
-import { DatePicker } from "@/components/base/date-picker/date-picker";
 import { Label } from "@/components/base/input/label";
 import { Input } from "@/components/base/input/input";
 import { NumberField } from "@/components/base/number-field/number-field";
 import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
 import { Textarea } from "@/components/base/textarea/textarea";
+import { toast } from "@/components/base/toast/toast";
 import { CheckoutWidget } from "@/components/checkout/checkout-widget";
 import { NavButton } from "@/components/nav-button";
 import { formatDate, formatUsd } from "@/lib/format";
@@ -18,7 +19,12 @@ import { actions, newId, useGateway } from "@/lib/store";
 import type { AssetSymbol, PaymentLink } from "@/lib/types";
 import { useOrigin } from "@/lib/use-origin";
 import { AssetSelect } from "../asset-select";
-import { CopyButton, PageHeader, Panel } from "../ui";
+import { CopyButton, EmptyState, PageHeader, Panel, SimulatedTag } from "../ui";
+import { useUnsavedGuard } from "../unsaved";
+
+// Low on the form, and Motion's only other use: it loads with its box already held.
+const DatePicker = dynamic(() => import("@/components/base/date-picker/date-picker").then((module) => module.DatePicker), { ssr: false, loading: () => <div aria-hidden className="h-10 rounded-xl bg-background-secondary-default" /> });
+const QRCodeSVG = dynamic(() => import("qrcode.react").then((module) => module.QRCodeSVG), { ssr: false, loading: () => <div aria-hidden className="size-[184px]" /> });
 
 function isHttpsUrl(value: string) {
   try {
@@ -29,16 +35,40 @@ function isHttpsUrl(value: string) {
 }
 
 export function LinkNewView() {
+  return <LinkForm />;
+}
+
+export function LinkEditView() {
+  const { id } = useParams<{ id: string }>();
+  const { links } = useGateway();
+  const link = links.find((item) => item.id === id);
+  if (!link) {
+    return (
+      <>
+        <PageHeader title="Edit link" />
+        <Panel><EmptyState icon={RiLinkUnlinkM} title="This link doesn't exist" description="It may have been deleted." action={<NavButton href="/dashboard/links">Back to links</NavButton>} /></Panel>
+      </>
+    );
+  }
+  return <LinkForm key={link.id} existing={link} />;
+}
+
+function LinkForm({ existing }: { existing?: PaymentLink }) {
   const { settings } = useGateway();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [fixed, setFixed] = useState(true);
-  const [amount, setAmount] = useState(250);
-  const [receiveAsset, setReceiveAsset] = useState<AssetSymbol>(settings.receiveAsset);
-  const [expiry, setExpiry] = useState<CalendarDate | null>(null);
-  const [successUrl, setSuccessUrl] = useState("");
+  const router = useRouter();
+  const [title, setTitle] = useState(existing?.title ?? "");
+  const [description, setDescription] = useState(existing?.description ?? "");
+  const [fixed, setFixed] = useState(existing ? existing.amount !== null : true);
+  const [amount, setAmount] = useState(existing?.amount ?? 250);
+  const [receiveAsset, setReceiveAsset] = useState<AssetSymbol>(existing?.receiveAsset ?? settings.receiveAsset);
+  const [expiry, setExpiry] = useState<CalendarDate | null>(existing?.expiresAt ? parseDate(existing.expiresAt.slice(0, 10)) : null);
+  const [successUrl, setSuccessUrl] = useState(existing?.successUrl ?? "");
   const [submitted, setSubmitted] = useState(false);
   const [created, setCreated] = useState<PaymentLink | null>(null);
+  const expiryValue = expiry?.toString() ?? null;
+  const [baseline] = useState(() => JSON.stringify([title, description, fixed, amount, receiveAsset, expiryValue, successUrl]));
+  const dirty = !created && JSON.stringify([title, description, fixed, amount, receiveAsset, expiryValue, successUrl]) !== baseline;
+  const unsavedDialog = useUnsavedGuard(dirty);
 
   const titleInvalid = submitted && !title.trim();
   const amountInvalid = submitted && fixed && !(amount > 0);
@@ -63,18 +93,23 @@ export function LinkNewView() {
       (successUrl === "" || isHttpsUrl(successUrl)) &&
       (expiry === null || expiry.compare(today(getLocalTimeZone())) > 0);
     if (!valid) return;
-    const link: PaymentLink = {
-      id: newId("lnk_"),
+    const fields = {
       title: title.trim(),
       description: description.trim(),
       amount: fixed ? amount : null,
       receiveAsset,
-      status: "active",
       expiresAt: expiry ? `${expiry.toString()}T00:00:00.000Z` : null,
       successUrl,
-      createdAt: new Date().toISOString(),
     };
+    if (existing) {
+      actions.updateLink(existing.id, fields);
+      toast.success("Link saved");
+      router.push("/dashboard/links");
+      return;
+    }
+    const link: PaymentLink = { ...fields, id: newId("lnk_"), status: "active", createdAt: new Date().toISOString() };
     actions.addLink(link);
+    toast.success("Link created", { description: "It's ready to share." });
     setCreated(link);
   };
 
@@ -82,7 +117,7 @@ export function LinkNewView() {
 
   return (
     <>
-      <PageHeader title="New payment link" description="Set what you're charging and which asset you want to receive." />
+      <PageHeader title={existing ? `Edit ${existing.title}` : "New payment link"} description={existing ? "The URL stays the same. Changes apply to the next checkout." : "Set what you're charging and which asset you want to receive."} />
       <div className="grid grid-cols-12 items-start gap-3 @3xl:gap-4">
         <Panel className="col-span-12 @4xl:col-span-7">
           <form onSubmit={submit} noValidate className="flex flex-col gap-5">
@@ -121,12 +156,13 @@ export function LinkNewView() {
 
             <div className="flex justify-end gap-2">
               <NavButton href="/dashboard/links" variant="secondary">Cancel</NavButton>
-              <Button type="submit" leadingIcon={RiAddLine}>Create link</Button>
+              {existing ? <Button type="submit" leadingIcon={RiSaveLine}>Save changes</Button> : <Button type="submit" leadingIcon={RiAddLine}>Create link</Button>}
             </div>
           </form>
         </Panel>
 
-        <div className="col-span-12 flex min-w-0 justify-center rounded-3xl border border-border-button-default bg-background-inner-default p-5 @4xl:sticky @4xl:top-6 @4xl:col-span-5">
+        <div className="dash-plate col-span-12 flex min-w-0 flex-col items-center gap-3 rounded-3xl p-4 @4xl:sticky @4xl:top-[4.5rem] @4xl:col-span-5">
+          <SimulatedTag>Preview, this is what customers see</SimulatedTag>
           <CheckoutWidget
             merchant={settings.businessName}
             title={title || "Your link title"}
@@ -138,6 +174,7 @@ export function LinkNewView() {
           />
         </div>
       </div>
+      {unsavedDialog}
     </>
   );
 }
@@ -160,7 +197,7 @@ function LinkCreated({ link, onAnother }: { link: PaymentLink; onAnother: () => 
             {link.expiresAt ? `, expires ${formatDate(link.expiresAt)}` : ""}
           </p>
         </div>
-        <div dir="ltr" className="w-full truncate rounded-xl bg-background-secondary-default px-3 py-2 text-body-medium">{url}</div>
+        <div dir="ltr" className="dash-well w-full truncate rounded-xl px-3 py-2 text-body-medium">{url}</div>
         <div className="flex flex-wrap gap-2">
           <CopyButton text={url} label="Link" variant="primary">Copy link</CopyButton>
           <NavButton href={`/pay/${link.id}`} variant="secondary" leadingIcon={RiExternalLinkLine}>Open checkout</NavButton>

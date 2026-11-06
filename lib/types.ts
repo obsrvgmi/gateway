@@ -30,7 +30,25 @@ export interface Widget {
   receiveAsset: AssetSymbol;
   buttonLabel: string;
   showBranding: boolean;
+  /** Assets the customer can pay with. Never empty; the builder keeps at least one. */
+  acceptedAssets: AssetSymbol[];
+  /** Quick-pick amounts shown when the customer sets the amount. */
+  presets: number[];
+  /** Name shown at checkout. Empty falls back to the business name. */
+  displayName: string;
+  /** A small data URL from the builder, or empty for initials. */
+  logo: string;
+  collectEmail: boolean;
+  success: WidgetSuccess;
   createdAt: string;
+}
+
+export type WidgetSuccessMode = "receipt" | "message" | "redirect";
+
+export interface WidgetSuccess {
+  mode: WidgetSuccessMode;
+  message: string;
+  url: string;
 }
 
 export interface Payment {
@@ -51,6 +69,54 @@ export interface Payment {
   refundedAt?: string;
   /** Created by the dashboard's live simulator, not by a checkout. */
   simulated?: boolean;
+}
+
+export type PayoutStatus = "processing" | "sent" | "failed";
+export type PayoutTrigger = "scheduled" | "manual";
+
+/** A simulated sweep from the merchant's settlement account to a destination. No funds ever move. */
+export interface Payout {
+  id: string;
+  /** What leaves the settlement account. */
+  asset: AssetSymbol;
+  amount: number;
+  /** What the destination receives. Differs from `asset` when the sweep swaps. */
+  receiveAsset: AssetSymbol;
+  receiveAmount: number;
+  /** Value at the mock price when requested. */
+  usd: number;
+  /** Route fee on a swap plus the flat network fee. */
+  feeUsd: number;
+  destinationId: string;
+  /** Copied at request time, so history survives a destination being removed. */
+  destinationLabel: string;
+  destinationAddress: string;
+  status: PayoutStatus;
+  trigger: PayoutTrigger;
+  paymentCount: number;
+  /** Stands in for a transaction hash. Prefixed `sim_` so it can't be mistaken for one. */
+  reference: string;
+  createdAt: string;
+  completedAt: string | null;
+  failureReason?: string;
+}
+
+export interface PayoutDestination {
+  id: string;
+  label: string;
+  address: string;
+}
+
+export type PayoutSchedule = "daily" | "weekly" | "manual";
+
+export interface PayoutSettings {
+  schedule: PayoutSchedule;
+  /** The merchant's own refund window. Settled funds wait this long before they can be paid out. */
+  holdDays: number;
+  /** Scheduled payouts skip an asset below this value. */
+  minimumUsd: number;
+  destinations: PayoutDestination[];
+  defaultDestinationId: string;
 }
 
 export interface ApiKey {
@@ -104,12 +170,14 @@ export interface Settings {
   team: TeamMember[];
   branding: Branding;
   notifications: NotificationPrefs;
+  payouts: PayoutSettings;
 }
 
 export interface GatewayState {
   links: PaymentLink[];
   widgets: Widget[];
   payments: Payment[];
+  payouts: Payout[];
   settings: Settings;
   setupDismissed: boolean;
 }

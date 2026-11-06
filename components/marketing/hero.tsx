@@ -1,7 +1,8 @@
 "use client";
 
+import { preload } from "react-dom";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { RiArrowDownLine, RiCheckLine, RiPauseLine, RiPlayLine } from "@remixicon/react";
+import { RiArrowDownLine, RiArrowRightLine, RiCheckLine, RiPauseLine, RiPlayLine } from "@remixicon/react";
 import { Rosette } from "@/components/brand/rosette";
 import { TokenMark } from "@/components/brand/token-mark";
 import { CHECKOUT_STEPS, CheckoutWidget } from "@/components/checkout/checkout-widget";
@@ -20,6 +21,7 @@ const AMOUNT = 120;
 const ink = (symbol: AssetSymbol) => ({ "--ink-light": ASSETS[symbol].ink.light, "--ink-dark": ASSETS[symbol].ink.dark }) as CSSProperties;
 
 export function Hero() {
+  preload("/guilloche/rosette-hero.svg", { as: "image", crossOrigin: "anonymous", fetchPriority: "high" });
   const stage = useRef<HTMLElement>(null);
   const [payAsset, setPayAsset] = useState<AssetSymbol>("ETH");
   const [receiveAsset, setReceiveAsset] = useState<AssetSymbol>("USDC");
@@ -27,24 +29,34 @@ export function Hero() {
   const [focus, setFocus] = useState<AssetSymbol | null>(null);
   const [paused, setPaused] = useState(false);
   const [touched, setTouched] = useState(false);
+  const [onScreen, setOnScreen] = useState(true);
   const locked = step !== null;
   const settled = step === CHECKOUT_STEPS.length;
   const { receiveAmount } = quote(AMOUNT, payAsset, receiveAsset);
 
   // Until someone takes over, the hero walks through assets so the quote is seen changing.
   useEffect(() => {
-    if (touched || paused || locked) return;
+    if (touched || paused || locked || !onScreen) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const timer = window.setInterval(() => {
       setPayAsset((current) => SOURCES[(SOURCES.indexOf(current) + 1) % SOURCES.length]);
     }, 3200);
     return () => window.clearInterval(timer);
-  }, [touched, paused, locked]);
+  }, [touched, paused, locked, onScreen]);
+
+  // Thirty-two dashes repaint every frame while they run, so they stop once the hero is scrolled past.
+  useEffect(() => {
+    const host = stage.current;
+    if (!host) return;
+    const observer = new IntersectionObserver(([entry]) => setOnScreen(entry.isIntersecting));
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <main ref={stage} onPointerDown={() => setTouched(true)} onKeyDown={() => setTouched(true)} className="stage relative isolate flex min-h-dvh flex-col overflow-hidden">
-      <div aria-hidden className="stage-art"><Rosette petals={60} rings={18} inner={6} outer={49} strokeWidth={0.04} /></div>
-      <FlowChannels stage={stage} sources={SOURCES} active={payAsset} step={step} focus={focus} paused={paused} />
+    <section ref={stage} aria-label="Accept any crypto" onPointerDown={() => setTouched(true)} onKeyDown={() => setTouched(true)} className="stage relative isolate flex min-h-dvh flex-col overflow-hidden">
+      <div aria-hidden className="stage-art"><i /></div>
+      <FlowChannels stage={stage} sources={SOURCES} active={payAsset} step={step} focus={focus} paused={paused || !onScreen} />
 
       <div className="stage-frame">
         <div className="stage-head">
@@ -143,10 +155,10 @@ export function Hero() {
         </div>
 
         <div className="stage-foot">
-          <a href="#products" className="stage-link stage-rise-late"><RiArrowDownLine className="size-4" aria-hidden />Payment Links and Widgets</a>
+          <a href="#links" className="stage-link stage-rise-late"><RiArrowDownLine className="size-4" aria-hidden />Payment Links and Widgets</a>
           <div className="stage-rise-late stage-actions">
             <div className="flex flex-wrap justify-center gap-2">
-              <NavButton href="/dashboard/links/new" className="stage-cta">Create Payment Link</NavButton>
+              <NavButton href="/dashboard/links/new" trailingIcon={RiArrowRightLine} className="stage-cta">Create Payment Link</NavButton>
               <NavButton href="/dashboard/widgets/new" variant="secondary" className="stage-cta">View Widget Demo</NavButton>
             </div>
             <ul className="stage-trust text-body-medium text-text-secondary">
@@ -158,7 +170,7 @@ export function Hero() {
           <PauseButton paused={paused} onToggle={() => setPaused((value) => !value)} />
         </div>
       </div>
-    </main>
+    </section>
   );
 }
 

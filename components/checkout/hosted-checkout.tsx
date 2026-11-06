@@ -1,9 +1,9 @@
 "use client";
 
+import { preload } from "react-dom";
 import { useState } from "react";
 import { RiLinkUnlinkM } from "@remixicon/react";
 import { Logo } from "@/components/brand/logo";
-import { Rosette } from "@/components/brand/rosette";
 import { ButtonLink } from "@/components/base/buttons/button";
 import { actions, newId, useGateway } from "@/lib/store";
 import { CheckoutWidget, type CheckoutResult } from "./checkout-widget";
@@ -11,6 +11,7 @@ import { CheckoutWidget, type CheckoutResult } from "./checkout-widget";
 const MOCK_PAYER = "0x71c2a9f4e83b5d06c1a7e2f9b04d68c3a15e7f29";
 
 export function HostedCheckout({ id }: { id: string }) {
+  preload("/guilloche/rosette-hero.svg", { as: "image", crossOrigin: "anonymous", fetchPriority: "high" });
   const [openedAt] = useState(() => Date.now());
   const { links, settings } = useGateway();
   const link = links.find((item) => item.id === id);
@@ -37,7 +38,7 @@ export function HostedCheckout({ id }: { id: string }) {
 
   return (
     <main className="stage is-page relative isolate flex min-h-dvh flex-col items-center justify-center gap-6 overflow-hidden p-4">
-      <div aria-hidden className="stage-art"><Rosette petals={60} rings={18} inner={6} outer={49} strokeWidth={0.04} /></div>
+      <div aria-hidden className="stage-art"><i /></div>
       {link ? (
         <CheckoutWidget
           merchant={settings.businessName}

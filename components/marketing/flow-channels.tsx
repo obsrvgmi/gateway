@@ -87,7 +87,7 @@ function measure(host: HTMLElement, sources: AssetSymbol[]): Layout | null {
 /** Longest first. Stacked dashes ending at one point give a tail that fades without a gradient. */
 const PULSE_LAYERS = ["flow-tail-3", "flow-tail-2", "flow-tail-1", "flow-head"];
 
-function Channel({ d, delay, className, style }: { d: string; delay: number; className?: string; style?: CSSProperties }) {
+export function Channel({ d, delay, className, style }: { d: string; delay: number; className?: string; style?: CSSProperties }) {
   return (
     <g className={cx("flow-lane", className)} style={{ ...style, "--delay": `${delay}s` } as CSSProperties}>
       <path d={d} className="flow-edge" />
@@ -122,15 +122,23 @@ export function FlowChannels({ stage, sources, active, step, focus, paused }: Fl
     host.querySelectorAll(".stage-plate, .stage-card").forEach((element) => observer.observe(element));
     void document.fonts?.ready.then(update);
 
+    // Set on the art alone: on the stage, each move restyles every element in the hero.
+    const art = host.querySelector<HTMLElement>(".stage-art");
+    let tilt = 0;
     const onMove = (event: PointerEvent) => {
-      if (event.pointerType === "touch") return;
-      const rect = host.getBoundingClientRect();
-      host.style.setProperty("--px", (((event.clientX - rect.left) / rect.width - 0.5) * 2).toFixed(3));
-      host.style.setProperty("--py", (((event.clientY - rect.top) / rect.height - 0.5) * 2).toFixed(3));
+      if (event.pointerType === "touch" || tilt) return;
+      const { clientX, clientY } = event;
+      tilt = requestAnimationFrame(() => {
+        tilt = 0;
+        const rect = host.getBoundingClientRect();
+        art?.style.setProperty("--px", (((clientX - rect.left) / rect.width - 0.5) * 2).toFixed(3));
+        art?.style.setProperty("--py", (((clientY - rect.top) / rect.height - 0.5) * 2).toFixed(3));
+      });
     };
     host.addEventListener("pointermove", onMove);
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(tilt);
       observer.disconnect();
       host.removeEventListener("pointermove", onMove);
     };

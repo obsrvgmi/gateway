@@ -1,8 +1,9 @@
 /*
  * Dashboard-only data colours. These are the dataviz skill's validated categorical slots, not UI
  * tokens: each asset keeps one hue in every chart. theme.css's chart tokens fail its CVD check.
+ * On <html>, not .dash-root, because the payout dialog and drawers portal to <body>.
  */
-.dash-root {
+html:has(.dash-root) {
   --viz-USDC: #2a78d6;
   --viz-BTC: #eb6834;
   --viz-SOL: #1baf7a;
@@ -16,7 +17,7 @@
   --viz-primary: var(--color-accent-700);
   --color-border-focus-ring: var(--color-accent-800);
 }
-.dark .dash-root {
+html.dark:has(.dash-root) {
   --viz-USDC: #3987e5;
   --viz-BTC: #d95926;
   --viz-SOL: #199e70;
@@ -29,6 +30,190 @@
   --viz-primary: var(--color-accent-500);
   --color-border-focus-ring: var(--color-accent-500);
 }
+
+/* ---------------------------------------------------------------------------
+ * The landing's green-black world, turned down for all-day use. These restate BoardUI's surfaces
+ * instead of adding parallel ones, so every vendored component follows. They sit on <html>, not
+ * .dash-root, because modals, drawers and popovers portal to <body>.
+ * --------------------------------------------------------------------------- */
+html:has(.dash-root) {
+  --color-background-full: #f1f6f3;
+  --color-background-primary-default: #ffffff;
+  --color-background-inner-default: #ffffff;
+  --color-background-secondary-default: #eef4f1;
+  --color-background-secondary-hover: #e5eeea;
+  --color-background-tertiary-default: #e8efeb;
+  --color-separator-border: rgb(6 40 30 / 0.09);
+  --color-border-button-default: rgb(6 40 30 / 0.14);
+  --color-border-button-hover: rgb(6 40 30 / 0.26);
+  --color-text-secondary: #55645e;
+  --color-text-tertiary: #7b8a83;
+  --dash-shadow: 0 1px 2px rgb(6 40 30 / 0.05), 0 10px 22px -16px rgb(6 40 30 / 0.16);
+}
+html.dark:has(.dash-root) {
+  --color-background-full: #070f0d;
+  --color-background-primary-default: #101b18;
+  --color-background-inner-default: #101b18;
+  --color-background-secondary-default: #0b1512;
+  --color-background-secondary-hover: #16241f;
+  --color-background-tertiary-default: #1b2b26;
+  --color-separator-border: rgb(190 255 230 / 0.09);
+  --color-border-button-default: rgb(190 255 230 / 0.14);
+  --color-border-button-hover: rgb(190 255 230 / 0.26);
+  --color-text-secondary: #9fb3ab;
+  --color-text-tertiary: #71847b;
+  --dash-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 24px -18px rgb(0 0 0 / 0.7);
+}
+
+.dash-root { background: var(--color-background-full); }
+.dash-plate {
+  border: 1px solid var(--color-border-button-default);
+  background: var(--color-background-inner-default);
+  box-shadow: inset 0 1px 0 var(--stage-sheen), var(--dash-shadow);
+}
+.dash-well {
+  background: var(--color-background-secondary-default);
+  box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--color-separator-border);
+}
+/* A plate that can be pressed: for stat tiles and rows that drill into a filtered view. */
+a.dash-plate { transition: border-color 140ms ease, translate 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+a.dash-plate:hover { border-color: var(--color-border-button-hover); }
+@media (prefers-reduced-motion: no-preference) {
+  a.dash-plate:hover { translate: 0 -1px; }
+}
+
+/* ----- Rail ------------------------------------------------------------------ */
+.dash-rail {
+  position: relative;
+  display: flex;
+  height: 100%;
+  width: 15rem;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.875rem 0.75rem 0.75rem;
+  background: linear-gradient(180deg, var(--color-background-primary-default), color-mix(in srgb, var(--color-background-primary-default) 72%, var(--color-background-full)));
+  box-shadow: inset -1px 0 0 var(--color-separator-border);
+}
+.dash-group-label { padding-inline: 0.625rem; font-size: 0.6875rem; line-height: 1rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-tertiary); }
+.dash-nav { position: relative; display: flex; flex-direction: column; gap: 0.0625rem; }
+.dash-nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5625rem;
+  border-radius: 0.625rem;
+  padding: 0.4375rem 0.625rem;
+  outline: none;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.dash-nav-link:hover { background: var(--color-background-secondary-default); color: var(--color-text-primary); }
+.dash-nav-link:focus-visible { box-shadow: 0 0 0 2px var(--color-border-focus-ring); }
+.dash-nav-link svg { width: 1.125rem; height: 1.125rem; flex: none; color: var(--color-foreground-icon-tertiary); }
+/* The current page reads as seated in the plate, with the hero's lit socket beside it. */
+.dash-nav-link[aria-current] {
+  background: var(--color-background-secondary-default);
+  color: var(--color-text-primary);
+  box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--color-separator-border);
+}
+.dash-nav-link[aria-current] svg { color: var(--color-text-accent); }
+.dash-nav-link[aria-current]::after {
+  content: "";
+  width: 0.4375rem;
+  height: 0.4375rem;
+  flex: none;
+  margin-inline-start: auto;
+  border-radius: 999px;
+  background: var(--viz-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--viz-primary) 20%, transparent);
+}
+
+/* ----- Top bar --------------------------------------------------------------- */
+.dash-bar {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  display: flex;
+  height: 3.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding-inline: 0.75rem;
+  background: color-mix(in srgb, var(--color-background-full) 84%, transparent);
+  box-shadow: inset 0 -1px 0 var(--color-separator-border);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+}
+@media (min-width: 640px) { .dash-bar { padding-inline: 1.25rem; } }
+.dash-search {
+  display: inline-flex;
+  height: 2.25rem;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.625rem;
+  padding-inline: 0.625rem 0.375rem;
+  cursor: pointer;
+  outline: none;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--color-text-secondary);
+  background: var(--color-background-secondary-default);
+  box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--color-separator-border);
+  transition: color 120ms ease;
+}
+.dash-search:hover { color: var(--color-text-primary); }
+.dash-search:focus-visible { box-shadow: 0 0 0 2px var(--color-border-focus-ring); }
+
+/* ----- Position strip: the money, left to right ------------------------------- */
+.pos-strip { padding: 0.25rem; gap: 0; border-radius: 1.5rem; }
+.pos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pos-cell {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+  border-radius: 1.125rem;
+  padding: 0.875rem 1rem;
+  outline: none;
+  transition: background-color 120ms ease;
+}
+a.pos-cell:hover { background: var(--color-background-secondary-default); }
+a.pos-cell:focus-visible { box-shadow: inset 0 0 0 2px var(--color-border-focus-ring); }
+.pos-next { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 1rem; row-gap: 0.5rem; background: var(--color-background-secondary-default); box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--color-separator-border); }
+@container (min-width: 56rem) {
+  .pos-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.9fr); }
+  .pos-next { grid-column: auto; }
+  /* A socket on each join: arriving feeds the hold, the hold feeds available, available feeds the payout. */
+  .pos-cell + .pos-cell::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    top: 50%;
+    inset-inline-start: 0;
+    width: var(--socket);
+    height: var(--socket);
+    margin-block-start: calc(var(--socket) / -2);
+    margin-inline-start: calc(var(--socket) / -2);
+    border-radius: 999px;
+    background: radial-gradient(circle, color-mix(in srgb, var(--stage-flow) 60%, transparent) 0 30%, transparent 62%), var(--socket-well);
+    box-shadow: 0 0 0 2px var(--socket-ring, var(--color-background-primary-default)), 0 0 0 3px var(--color-separator-border);
+  }
+  .pos-cell + .pos-cell::after {
+    content: "";
+    position: absolute;
+    top: 1rem;
+    bottom: 1rem;
+    inset-inline-start: 0;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, var(--color-separator-border) 22%, transparent 42%, transparent 58%, var(--color-separator-border) 78%, transparent);
+  }
+}
+
+/* Texture means "not final yet", the same language as the chart's running bar. */
+.dash-hatch { background-image: repeating-linear-gradient(135deg, var(--viz-primary) 0 2px, color-mix(in srgb, var(--viz-primary) 30%, transparent) 2px 6px); }
 
 /* A slow hydration earns a skeleton; a fast one never shows it. */
 .dash-skeleton {
@@ -55,3 +240,21 @@
 @media (prefers-reduced-motion: reduce) {
   .dash-enter, .dash-pulse, .dash-skeleton { animation: none; }
 }
+
+/* ----- Overlays ----------------------------------------------------------------
+ * Vendored modals and drawers sit on --color-background-full, which is the mint page ground here.
+ * In light mode a floating panel has to lift off that ground, so it goes white; dark keeps the
+ * deeper ground, where inputs still need an edge against it. Their scroll fades read the same token.
+ * --------------------------------------------------------------------------- */
+html:not(.dark):has(.dash-root) .modal-surface { --color-background-full: #ffffff; }
+html:has(.dash-root) .modal-backdrop { background: rgb(4 24 18 / 0.5); }
+
+/* ----- Press ------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  a.dash-plate:active, a.pos-cell:active { translate: 0 1px; }
+  a.pos-cell { transition: background-color 120ms ease, translate 120ms ease; }
+  .dash-nav-link:active { background: var(--color-background-secondary-hover); }
+  /* Each route settles in rather than snapping. Opacity only: nothing may move once painted. */
+  .dash-route { animation: dash-route 140ms ease-out both; }
+}
+@keyframes dash-route { from { opacity: 0.4; } }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { RiAddLine, RiDeleteBin6Line, RiLayoutMasonryLine, RiPauseLine, RiPencilLine, RiPlayLine } from "@remixicon/react";
+import { RiAddLine, RiDeleteBin6Line, RiExchangeDollarLine, RiFileCopy2Line, RiLayoutMasonryLine, RiPauseLine, RiPencilLine, RiPlayLine } from "@remixicon/react";
 import { Button } from "@/components/base/buttons/button";
 import { SearchField } from "@/components/base/search-field/search-field";
 import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
@@ -9,22 +9,32 @@ import { toast } from "@/components/base/toast/toast";
 import { NavButton } from "@/components/nav-button";
 import { formatUsd, formatUsdWhole } from "@/lib/format";
 import { sourceTotals, sourceTrend } from "@/lib/metrics";
-import { actions, useGateway } from "@/lib/store";
+import { actions, newId, useGateway } from "@/lib/store";
 import { embedSnippet } from "@/lib/embed";
 import { useOrigin } from "@/lib/use-origin";
 import type { Widget, WidgetStatus } from "@/lib/types";
 import { cx } from "@/utils/cx";
 import { Sparkline } from "../charts";
 import { formatCount, plural } from "../fmt";
-import { AddTile, Bento, CopyButton, EmptyState, PageHeader, Panel, WidgetStatusChip } from "../ui";
+import { AddTile, Bento, CopyButton, EmptyState, PageHeader, Panel, Stat, WidgetStatusChip } from "../ui";
 
 const RADIUS = { rounded: "rounded-xl", soft: "rounded-md", sharp: "rounded-none" };
+
+/** The choices that change what a customer gets, in a line. */
+function featureLine(widget: Widget) {
+  return [
+    widget.amount === null ? (widget.presets.length ? `${widget.presets.length} suggested amounts` : "Customer sets amount") : `${formatUsd(widget.amount)} fixed`,
+    widget.acceptedAssets.length === 8 ? "All assets" : plural(widget.acceptedAssets.length, "asset"),
+    widget.collectEmail ? "Collects email" : null,
+    widget.success.mode === "receipt" ? null : widget.success.mode === "redirect" ? "Redirects" : "Custom message",
+  ].filter(Boolean).join(", ");
+}
 
 /** A small drawing of the widget, from its real theme, accent and corners. */
 function WidgetThumb({ widget }: { widget: Widget }) {
   const dark = widget.theme === "dark";
   return (
-    <div className={cx("flex h-28 items-center justify-center rounded-2xl bg-background-secondary-default", widget.theme === "auto" && "bg-linear-to-r from-background-secondary-default to-background-tertiary-default")} aria-hidden>
+    <div className={cx("dash-well flex h-28 items-center justify-center rounded-2xl", widget.theme === "auto" && "bg-linear-to-r from-background-secondary-default to-background-tertiary-default")} aria-hidden>
       <div className={cx("theme-scope-light flex w-36 flex-col gap-1.5 border border-border-button-default p-2.5 shadow-card", RADIUS[widget.radius], dark ? "bg-text-primary" : "bg-background-primary-default")}>
         <span className={cx("h-1.5 w-16 rounded-full", dark ? "bg-background-primary-default/40" : "bg-background-tertiary-default")} />
         <span className={cx("h-1.5 w-24 rounded-full", dark ? "bg-background-primary-default/25" : "bg-background-secondary-default")} />
@@ -70,11 +80,7 @@ export function WidgetsView() {
           ["Settled payments", formatCount(count), "All time, across widgets"],
           ["Average payment", formatUsd(count ? volume / count : 0), "Across widgets"],
         ].map(([label, value, note]) => (
-          <div key={label} className="col-span-6 flex min-w-0 flex-col gap-0.5 rounded-3xl border border-border-button-default bg-background-inner-default p-4 shadow-card @5xl:col-span-3">
-            <p className="truncate text-body-regular text-text-secondary">{label}</p>
-            <p className="truncate text-title-2-semibold">{value}</p>
-            <p className="truncate text-caption-1-regular text-text-secondary">{note}</p>
-          </div>
+          <Stat key={label} label={label} value={value} note={note} />
         ))}
       </Bento>
 
@@ -97,11 +103,12 @@ export function WidgetsView() {
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-col">
                   <h2 className="truncate text-body-semibold" title={widget.name}>{widget.name}</h2>
-                  <p className="truncate text-caption-1-regular text-text-secondary" dir="ltr">{widget.site}</p>
+                  <p className="truncate text-caption-1-regular text-text-secondary" dir="ltr">{widget.site || "No site set"}</p>
                 </div>
                 <WidgetStatusChip status={widget.status} />
               </div>
-              <div className="flex items-end justify-between gap-3 rounded-2xl bg-background-secondary-default p-3">
+              <p className="text-caption-1-regular text-text-secondary">{featureLine(widget)}</p>
+              <div className="dash-well flex items-end justify-between gap-3 rounded-2xl p-3">
                 <div className="flex min-w-0 flex-col">
                   <span className="truncate text-headline-semibold">{formatUsdWhole(totals.volume)}</span>
                   <span className="text-caption-1-regular text-text-secondary tabular-nums">{plural(totals.count, "payment")}, to {widget.receiveAsset}</span>
@@ -109,16 +116,29 @@ export function WidgetsView() {
                 <Sparkline values={trend} label={`${widget.name}, volume over 30 days`} className="w-20 shrink-0" />
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <CopyButton text={embedSnippet(origin, widget.id, "html")} label="Embed code" size="small">Copy embed</CopyButton>
+                <CopyButton text={embedSnippet(origin, widget.id, "html", widget)} label="Embed code" size="small">Embed</CopyButton>
                 <NavButton href={`/dashboard/widgets/${widget.id}/edit`} variant="secondary" size="small" leadingIcon={RiPencilLine}>Edit</NavButton>
-                <span className="ms-auto flex gap-1">
+                <span className="ms-auto flex">
+                  <NavButton href={`/dashboard/payments?source=${widget.id}`} variant="ghost" size="small" iconOnly leadingIcon={RiExchangeDollarLine} aria-label={`Payments from ${widget.name}`} />
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    iconOnly
+                    leadingIcon={RiFileCopy2Line}
+                    aria-label={`Duplicate ${widget.name}`}
+                    onClick={() => { actions.addWidget({ ...widget, id: newId("wgt_"), name: `${widget.name} copy`, status: "paused", createdAt: new Date().toISOString() }); toast.success("Widget duplicated", { description: "The copy starts paused." }); }}
+                  />
                   <Button
                     variant="ghost"
                     size="small"
                     iconOnly
                     leadingIcon={widget.status === "live" ? RiPauseLine : RiPlayLine}
                     aria-label={`${widget.status === "live" ? "Pause" : "Resume"} ${widget.name}`}
-                    onClick={() => actions.updateWidget(widget.id, { status: widget.status === "live" ? "paused" : "live" })}
+                    onClick={() => {
+                      const { status } = widget;
+                      actions.updateWidget(widget.id, { status: status === "live" ? "paused" : "live" });
+                      toast.success(status === "live" ? "Widget paused" : "Widget resumed", { id: `widget-${widget.id}`, description: status === "live" ? "Its checkout won't take payments until you resume it." : "Its checkout is taking payments again.", actions: [{ label: "Undo", onClick: () => actions.updateWidget(widget.id, { status }) }] });
+                    }}
                   />
                   <Button
                     variant="ghost"

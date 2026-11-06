@@ -4,6 +4,11 @@
 .theme-scope-light {
   color-scheme: light;
   --color-text-accent: var(--color-accent-800);
+  --button-catchlight: rgb(255 255 255 / 0.55);
+  --button-lip: rgb(0 0 0 / 0.14);
+  --button-contact: rgb(6 24 18 / 0.2);
+  --button-key-sheen: rgb(255 255 255 / 0.9);
+  --button-key-shade: rgb(6 24 18 / 0.05);
   --color-button-secondary-hover: var(--color-accent-50);
   --color-button-secondary-active: var(--color-accent-100);
   --color-foreground-full: var(--color-white);

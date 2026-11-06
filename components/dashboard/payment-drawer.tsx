@@ -12,7 +12,7 @@ import { paymentTimeline, routeFee, type TimelineStep } from "@/lib/metrics";
 import { actions, useGateway } from "@/lib/store";
 import { cx } from "@/utils/cx";
 import { formatClock, formatStamp } from "./fmt";
-import { CopyButton, PaymentStatusChip } from "./ui";
+import { CopyButton, PaymentStatusChip, SIMULATED } from "./ui";
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -95,7 +95,7 @@ export function PaymentDrawer({ paymentId, onClose }: { paymentId: string | null
         onConfirm={() => {
           if (payment) actions.refundPayments([payment.id]);
           setRefunding(false);
-          toast.success("Payment marked as refunded");
+          toast.success("Payment marked as refunded", { description: SIMULATED });
         }}
       />
     </>

@@ -1,24 +1,32 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { RiCheckLine, RiFileCopyLine, RiLinksLine, RiLayoutMasonryLine, RiLockLine, RiMailLine } from "@remixicon/react";
-import { Radio as AriaRadio, RadioGroup as AriaRadioGroup, Tab as AriaTab, TabList as AriaTabList, TabPanel as AriaTabPanel, Tabs as AriaTabs } from "react-aria-components";
+import { RiArrowRightLine, RiCheckLine, RiFileCopyLine, RiLockLine, RiMailLine } from "@remixicon/react";
+import { Radio as AriaRadio, RadioGroup as AriaRadioGroup } from "react-aria-components";
+import { Button, ButtonLink } from "@/components/base/buttons/button";
 import { toast } from "@/components/base/toast/toast";
-import { LogoMark } from "@/components/brand/logo";
-import { Rosette } from "@/components/brand/rosette";
 import { TokenMark } from "@/components/brand/token-mark";
 import { CheckoutWidget } from "@/components/checkout/checkout-widget";
 import { NavButton } from "@/components/nav-button";
+import { ASSETS, RECEIVE_ASSETS } from "@/lib/assets";
+import { embedSnippet } from "@/lib/embed";
+import { formatToken } from "@/lib/format";
 import { SITE } from "@/lib/site";
 import { useOrigin } from "@/lib/use-origin";
 import type { AssetSymbol, WidgetRadius } from "@/lib/types";
 import { cx } from "@/utils/cx";
+import { Bus } from "./bus";
 
 const DEMO_LINK = "/pay/lnk_8fk2m1";
+const SERIAL = "lnk_8fk2m1";
 // What the mock shows and the QR encodes. `.example` is reserved, so it can never resolve to someone.
-const DISPLAY_LINK = "pay.gateway.example/lnk_8fk2m1";
-const PAYERS: AssetSymbol[] = ["BTC", "ETH", "SOL", "USDT"];
+const DISPLAY_LINK = `pay.gateway.example/${SERIAL}`;
+const DISPLAY_ORIGIN = "https://gateway.example";
+const NOTE_AMOUNT = 2400;
+const NOTE_RECEIVE: AssetSymbol = "USDC";
+const PAYERS: AssetSymbol[] = ["BTC", "ETH", "SOL", "USDT", "NEAR"];
+const MICROPRINT = `PAYMENT LINK ${SERIAL.toUpperCase()}  ANY ASSET IN ONE ASSET OUT  `.repeat(12);
 // Mid-tones only: each has to read on both the paper and the ink ground.
 const ACCENTS = [
   { value: "#00EC97", name: "Green" },
@@ -33,68 +41,63 @@ const RADII: { value: WidgetRadius; name: string }[] = [
   { value: "sharp", name: "Sharp" },
 ];
 
-const PRODUCTS = [
-  {
-    id: "links",
-    name: "Payment Links",
-    icon: RiLinksLine,
-    body: "For billing someone directly. Set an amount, share a link or QR code, and it opens a hosted checkout.",
-    note: "Opens a hosted checkout",
-    cta: "Create a link",
-    href: "/dashboard/links/new",
-  },
-  {
-    id: "widgets",
-    name: "Payment Widgets",
-    icon: RiLayoutMasonryLine,
-    body: "For your own pages. Match the checkout to your brand, then copy the embed code. Try the colours here.",
-    note: "Live preview, simulated payments",
-    cta: "Build a widget",
-    href: "/dashboard/widgets/new",
-  },
-];
-
 export function Products() {
   return (
-    <section id="products" aria-labelledby="products-title" className="products">
-      <AriaTabs orientation="vertical" className="products-frame products-layout">
-        <div className="products-side">
-          <h2 id="products-title" className="section-display text-text-primary">Two ways to get paid</h2>
-          <AriaTabList aria-label="Products" className="products-tabs">
-            {PRODUCTS.map(({ id, name, icon: Icon, body }) => (
-              <AriaTab key={id} id={id} className={({ isFocusVisible }) => cx("products-tab", isFocusVisible && "is-focus")}>
-                <Icon className="products-tab-icon" aria-hidden />
-                <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-body-semibold text-text-primary">{name}</span>
-                  <span className="products-tab-body text-body-regular text-text-secondary">{body}</span>
-                </span>
-              </AriaTab>
-            ))}
-          </AriaTabList>
-          <p className="text-caption-1-regular text-text-secondary">Gateway is a working demo. Payments here are simulated and no funds move.</p>
-        </div>
+    <div id="products" className="scenes">
+      <Bus span={2400} delay={-2.4} className="bus-spine" />
+      <span aria-hidden className="scenes-seam"><span className="scenes-port"><span className="stage-socket is-main" /></span></span>
 
-        <AriaTabPanel id="links" className="products-stage stage-plate outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
-          <LinkVisual />
-        </AriaTabPanel>
-        <AriaTabPanel id="widgets" className="products-stage stage-plate outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
-          <WidgetVisual />
-        </AriaTabPanel>
-      </AriaTabs>
-    </section>
-  );
-}
+      <Scene
+        id="links"
+        title="Send a link."
+        body="Set an amount and share a URL or QR code. It opens a hosted checkout your customer can pay from any chain."
+        cta="Create a link"
+        href="/dashboard/links/new"
+      >
+        <LinkPlate />
+      </Scene>
 
-function StageFoot({ product }: { product: (typeof PRODUCTS)[number] }) {
-  return (
-    <div className="products-foot">
-      <span className="text-body-regular text-text-secondary">{product.note}</span>
-      <NavButton href={product.href} className="products-cta">{product.cta}</NavButton>
+      <Scene
+        id="widgets"
+        title="Or embed the checkout."
+        body="Match it to your brand, copy the embed code, and it sits on your own page. The one below is live: change it."
+        cta="Build a widget"
+        href="/dashboard/widgets/new"
+        flip
+      >
+        <WidgetPlate />
+      </Scene>
     </div>
   );
 }
 
-function LinkVisual() {
+/** Heading and body sit either side of the axis and swap between scenes, the way the hero's headline does. */
+function Scene({ id, title, body, cta, href, flip = false, children }: { id: string; title: string; body: string; cta: string; href: string; flip?: boolean; children: ReactNode }) {
+  return (
+    <section id={id} aria-labelledby={`${id}-title`} className={cx("scene", flip && "is-flipped")}>
+      <div className="scene-head">
+        <h2 id={`${id}-title`} className="scene-title">{title}</h2>
+        <div className="scene-side">
+          <p className="scene-body">{body}</p>
+          <NavButton href={href} trailingIcon={RiArrowRightLine} className="scene-cta">{cta}</NavButton>
+        </div>
+      </div>
+      {children}
+      <Bus span={96} delay={-1.6} className="bus-stub" />
+    </section>
+  );
+}
+
+function PlatePorts() {
+  return (
+    <>
+      <span aria-hidden className="plate-port is-top"><span className="stage-socket is-main" /></span>
+      <span aria-hidden className="plate-port is-bottom"><span className="stage-socket is-main" /></span>
+    </>
+  );
+}
+
+function LinkPlate() {
   const origin = useOrigin();
   const url = `${origin}${DEMO_LINK}`;
   const [copied, setCopied] = useState(false);
@@ -111,105 +114,173 @@ function LinkVisual() {
   };
 
   return (
-    <div className="products-view">
-      <div className="link-view">
-        <div className="link-invoice">
-          <p className="text-body-regular text-text-secondary">{SITE.merchant}</p>
-          <p className="text-body-semibold text-text-primary">Brand sprint deposit</p>
-          <p className="link-amount tabular-nums text-text-primary">$2,400<span className="text-text-secondary">.00</span></p>
-          <span aria-hidden className="stage-rule" />
-          <div className="flex items-center gap-3">
-            <span className="flex">
-              {PAYERS.map((symbol) => <TokenMark key={symbol} symbol={symbol} size="xs" className="-me-1 rounded-full ring-2 ring-[var(--stage-surface)]" />)}
-            </span>
-            <span className="text-body-regular text-text-secondary">Any supported asset</span>
-          </div>
-        </div>
-
-        <div className="link-share">
-          <div className="link-qr">
-            <QRCodeSVG value={`https://${DISPLAY_LINK}`} size={104} bgColor="transparent" fgColor="currentColor" title="QR code for the demo payment link" />
-          </div>
-          <div className="flex w-full min-w-0 flex-col gap-2">
-            <a dir="ltr" href={DEMO_LINK} className="link-url">{DISPLAY_LINK}</a>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button type="button" onClick={copy} className="link-action is-primary">
-                {copied ? <RiCheckLine className="size-4" aria-hidden /> : <RiFileCopyLine className="size-4" aria-hidden />}
-                {copied ? "Copied" : "Copy link"}
-              </button>
-              <a href={`mailto:?subject=${encodeURIComponent("Payment link")}&body=${encodeURIComponent(url)}`} className="link-action">
-                <RiMailLine className="size-4" aria-hidden />Email
-              </a>
-            </div>
-          </div>
-        </div>
+    <div className="stage-plate scene-plate reveal">
+      <PlatePorts />
+      <div className="note-mount"><PaymentNote /></div>
+      <div className="tray">
+        <a dir="ltr" href={DEMO_LINK} className="tray-url">{DISPLAY_LINK}</a>
+        <Button variant="secondary" leadingIcon={copied ? RiCheckLine : RiFileCopyLine} onClick={copy} className="tray-action">
+          {copied ? "Copied" : "Copy link"}
+        </Button>
+        <ButtonLink variant="secondary" leadingIcon={RiMailLine} href={`mailto:?subject=${encodeURIComponent("Payment link")}&body=${encodeURIComponent(url)}`} className="tray-action">
+          Email
+        </ButtonLink>
       </div>
-      <StageFoot product={PRODUCTS[0]} />
     </div>
   );
 }
 
-function WidgetVisual() {
-  const [accent, setAccent] = useState(ACCENTS[0].value);
-  const [radius, setRadius] = useState<WidgetRadius>("rounded");
+/**
+ * A payment link drawn as what it is: a modern cheque. It stays on ink in both themes, so `dark`
+ * scopes its tokens. The rosettes turn with scroll and the foil and tilt follow the pointer; the
+ * pointer values are written straight to CSS variables so moving over it never renders React.
+ */
+function PaymentNote() {
+  const note = useRef<HTMLDivElement>(null);
+  const frame = useRef(0);
+
+  const onMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
+    const { clientX, clientY } = event;
+    cancelAnimationFrame(frame.current);
+    frame.current = requestAnimationFrame(() => {
+      const element = note.current;
+      if (!element) return;
+      const rect = element.getBoundingClientRect();
+      element.style.setProperty("--mx", ((clientX - rect.left) / rect.width).toFixed(3));
+      element.style.setProperty("--my", ((clientY - rect.top) / rect.height).toFixed(3));
+    });
+  };
+  const onLeave = () => {
+    cancelAnimationFrame(frame.current);
+    note.current?.style.setProperty("--mx", "0.5");
+    note.current?.style.setProperty("--my", "0.5");
+  };
 
   return (
-    <div className="products-view">
-      <div className="browser">
-        <div className="browser-bar">
-          <span className="browser-lock"><RiLockLine className="size-3" aria-hidden />lumen.studio/print</span>
+    <div ref={note} onPointerMove={onMove} onPointerLeave={onLeave} className="note dark">
+      <div aria-hidden className="note-art"><i /><i /></div>
+      <span aria-hidden className="note-band is-top" />
+      <span aria-hidden className="note-band is-bottom" />
+      <span aria-hidden className="note-frame" />
+      <span aria-hidden className="note-glare" />
+
+      <div className="note-body">
+        <div className="note-who">
+          <p className="note-merchant">{SITE.merchant}</p>
+          <p className="note-title">Brand sprint deposit</p>
         </div>
-        <div className="browser-page">
-          <div className="browser-product">
-            <span aria-hidden className="browser-print" style={{ "--print": accent } as CSSProperties}><Rosette petals={28} rings={9} strokeWidth={0.22} inner={14} outer={47} /></span>
-            <div className="flex min-w-0 flex-col">
+        <p className="note-amount"><span>$2,400</span><span className="note-cents">.00</span></p>
+        <div className="note-terms">
+          <p className="note-pay">
+            <span className="note-tokens">
+              {PAYERS.map((symbol) => <TokenMark key={symbol} symbol={symbol} size="xs" className="note-token" />)}
+            </span>
+            Payable in any supported asset
+          </p>
+          <p className="note-settle">Settles as {formatToken(NOTE_AMOUNT, NOTE_RECEIVE)} on {ASSETS[NOTE_RECEIVE].chain}</p>
+        </div>
+      </div>
+
+      <span aria-hidden className="note-foil" />
+
+      <div className="note-seal">
+        <span aria-hidden className="note-seal-ring" />
+        <div className="note-qr">
+          <QRCodeSVG value={`https://${DISPLAY_LINK}`} size={148} bgColor="transparent" fgColor="currentColor" title="QR code for the demo payment link" />
+        </div>
+        <p dir="ltr" className="note-serial">No. {SERIAL}</p>
+      </div>
+
+      <span className="note-stamp">Specimen</span>
+      <p aria-hidden className="note-micro">{MICROPRINT}</p>
+    </div>
+  );
+}
+
+function WidgetPlate() {
+  const [accent, setAccent] = useState(ACCENTS[0].value);
+  const [radius, setRadius] = useState<WidgetRadius>("rounded");
+  const [receive, setReceive] = useState<AssetSymbol>("USDC");
+
+  return (
+    <div className="stage-plate scene-plate console reveal" style={{ "--brand": accent } as CSSProperties}>
+      <PlatePorts />
+      <div className="console-controls">
+        <Control label="Accent">
+          <AriaRadioGroup aria-label="Widget colour" value={accent} onChange={setAccent} orientation="horizontal" className="swatches">
+            {ACCENTS.map((item) => (
+              <AriaRadio key={item.value} value={item.value} aria-label={item.name} className={({ isSelected, isFocusVisible }) => cx("swatch", isSelected && "is-selected", isFocusVisible && "is-focus")}>
+                <span style={{ background: item.value }} />
+              </AriaRadio>
+            ))}
+          </AriaRadioGroup>
+        </Control>
+        <Control label="Corners">
+          <AriaRadioGroup aria-label="Widget corners" value={radius} onChange={(value) => setRadius(value as WidgetRadius)} orientation="horizontal" className="segments">
+            {RADII.map((item) => (
+              <AriaRadio key={item.value} value={item.value} className={({ isSelected, isFocusVisible }) => cx("segment", isSelected && "is-selected", isFocusVisible && "is-focus")}>
+                {item.name}
+              </AriaRadio>
+            ))}
+          </AriaRadioGroup>
+        </Control>
+        <Control label="Get paid in">
+          <AriaRadioGroup aria-label="Asset you get paid in" value={receive} onChange={(value) => setReceive(value as AssetSymbol)} orientation="horizontal" className="segments">
+            {RECEIVE_ASSETS.map((asset) => (
+              <AriaRadio key={asset.symbol} value={asset.symbol} className={({ isSelected, isFocusVisible }) => cx("segment segment-asset", isSelected && "is-selected", isFocusVisible && "is-focus")}>
+                <TokenMark symbol={asset.symbol} size="xs" />{asset.symbol}
+              </AriaRadio>
+            ))}
+          </AriaRadioGroup>
+        </Control>
+        <span aria-hidden className="stage-rule console-rule" />
+        <div className="console-embed">
+          <p className="stage-caption">Embed</p>
+          <pre dir="ltr" className="console-code"><code>{embedSnippet(DISPLAY_ORIGIN, "wgt_lumen", "html", { accent, radius, receiveAsset: receive, buttonLabel: "Buy print" })}</code></pre>
+          <p className="text-caption-1-regular text-text-secondary">Live preview. Payments are simulated.</p>
+        </div>
+      </div>
+
+      <div className="shop">
+        <div className="shop-bar">
+          <span aria-hidden className="shop-lights"><i /><i /><i /></span>
+          <span className="shop-url"><RiLockLine className="size-3" aria-hidden />lumen.studio/print</span>
+        </div>
+        <div className="shop-page">
+          <div className="shop-product">
+            <div className="shop-wall">
+              <span aria-hidden className="shop-print"><i /></span>
+            </div>
+            <div className="shop-caption">
               <p className="truncate text-body-semibold text-text-primary">Rosette print, A2</p>
               <p className="truncate text-caption-1-regular text-text-secondary">Edition of 200</p>
-            </div>
-            <div className="widget-controls">
-              <AriaRadioGroup aria-label="Widget colour" value={accent} onChange={setAccent} orientation="horizontal" className="flex items-center gap-0.5">
-                {ACCENTS.map((item) => (
-                  <AriaRadio key={item.value} value={item.value} aria-label={item.name} className={({ isSelected, isFocusVisible }) => cx("widget-swatch", isSelected && "is-selected", isFocusVisible && "is-focus")}>
-                    <span style={{ background: item.value }} />
-                  </AriaRadio>
-                ))}
-              </AriaRadioGroup>
-              <AriaRadioGroup aria-label="Widget corners" value={radius} onChange={(value) => setRadius(value as WidgetRadius)} orientation="horizontal" className="flex items-center gap-0.5">
-                {RADII.map((item) => (
-                  <AriaRadio key={item.value} value={item.value} className={({ isSelected, isFocusVisible }) => cx("widget-radius", isSelected && "is-selected", isFocusVisible && "is-focus")}>
-                    {item.name}
-                  </AriaRadio>
-                ))}
-              </AriaRadioGroup>
             </div>
           </div>
           <CheckoutWidget
             merchant={SITE.merchant}
             title="Rosette print, A2"
             amount={79}
-            receiveAsset="USDC"
+            receiveAsset={receive}
             payAsset="ETH"
             showAssetPicker={false}
             showBranding={false}
             accent={accent}
             radius={radius}
             buttonLabel="Buy print"
-            className="browser-widget"
+            className="shop-widget"
           />
         </div>
       </div>
-      <StageFoot product={PRODUCTS[1]} />
     </div>
   );
 }
 
-export function SiteFooter() {
+function Control({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <footer className="site-foot">
-      <div className="products-frame site-foot-row">
-        <span className="inline-flex items-center gap-2 text-body-semibold text-text-primary"><span className="flex size-6 items-center justify-center rounded-md bg-accent-500 text-text-on-accent"><LogoMark className="size-4" /></span>{SITE.name}</span>
-        <span className="text-body-regular text-text-secondary">Powered by NEAR Intents</span>
-      </div>
-    </footer>
+    <div className="console-control">
+      <p className="stage-caption">{label}</p>
+      {children}
+    </div>
   );
 }

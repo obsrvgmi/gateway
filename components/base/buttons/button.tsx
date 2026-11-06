@@ -79,7 +79,7 @@ const styles = sortCx({
     "inline-flex items-center justify-center gap-0.5 whitespace-nowrap overflow-hidden",
     "font-sans select-none cursor-pointer",
     "button-press-motion",
-    "outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-border-focus-ring",
+    "outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background-full focus-visible:ring-border-focus-ring",
     "disabled:cursor-not-allowed aria-disabled:cursor-not-allowed",
   ].join(" "),
 
@@ -116,18 +116,18 @@ const styles = sortCx({
 
   variant: {
     primary: [
-      "bg-button-primary text-text-on-accent shadow-xs",
+      "bg-button-primary button-depth text-text-on-accent",
       "disabled:text-button-primary-disabled-foreground disabled:shadow-none",
       "aria-disabled:text-button-primary-disabled-foreground aria-disabled:shadow-none",
     ].join(" "),
     danger: [
-      "bg-button-danger text-text-white shadow-xs",
+      "bg-button-danger button-depth [--depth-edge:var(--color-red-700)] text-text-white",
       "disabled:text-foreground-disabled-danger disabled:shadow-none",
       "aria-disabled:text-foreground-disabled-danger aria-disabled:shadow-none",
     ].join(" "),
     secondary: [
-      "bg-background-primary-default text-text-primary",
-      "border border-button-secondary-border shadow-xs",
+      "bg-background-primary-default button-key text-text-primary",
+      "border",
       "hover:bg-button-secondary-hover",
       "active:bg-button-secondary-active",
       "disabled:bg-background-primary-disabled disabled:border-border-button-default disabled:text-text-tertiary disabled:shadow-none",

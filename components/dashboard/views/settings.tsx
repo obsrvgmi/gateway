@@ -1,7 +1,8 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { RiAddLine, RiDeleteBin6Line, RiGroupLine, RiKey2Line, RiWebhookLine } from "@remixicon/react";
+import { RiAddLine, RiArrowRightLine, RiDeleteBin6Line, RiGroupLine, RiKey2Line, RiWebhookLine } from "@remixicon/react";
 import { ThemeToggle } from "@/components/application/theme/theme-toggle";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { Chip } from "@/components/base/badges/chip";
@@ -13,14 +14,15 @@ import { Label } from "@/components/base/input/label";
 import { Modal, ModalBody, ModalFooter, ModalHeader, AlertDialog } from "@/components/base/modal/modal";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { Switch } from "@/components/base/switch/switch";
+import { Tab, TabList, TabPanel, Tabs } from "@/components/base/tabs/tabs";
 import { toast } from "@/components/base/toast/toast";
-import { formatDate } from "@/lib/format";
-import { actions, newId, useGateway } from "@/lib/store";
+import { NavButton } from "@/components/nav-button";
+import { formatDate, shortAddress } from "@/lib/format";
+import { actions, getGateway, newId, useGateway } from "@/lib/store";
 import type { ApiKey, AssetSymbol, NotificationPrefs, Settings, TeamRole, Webhook, WebhookEvent } from "@/lib/types";
 import { AssetSelect } from "../asset-select";
 import { Bento, CopyButton, EmptyState, PageHeader, Panel } from "../ui";
 
-const WALLET_PATTERN = /^(0x[a-fA-F0-9]{40}|[a-z0-9_-]+(\.[a-z0-9_-]+)*\.(near|testnet))$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EVENTS: WebhookEvent[] = ["payment.processing", "payment.settled", "payment.refunded", "payment.expired", "link.created"];
 const ROLES: [TeamRole, string][] = [["admin", "Admin"], ["finance", "Finance"], ["viewer", "Viewer"]];
@@ -32,6 +34,8 @@ const ALERTS: [keyof NotificationPrefs, string, string][] = [
   ["expired", "Quote expired", "When a customer doesn't finish paying"],
   ["links", "Link expiring", "A week before a link's end date"],
 ];
+
+const TABS = [["business", "Business"], ["developers", "Developers"], ["team", "Team and alerts"], ["workspace", "Workspace"]];
 
 const isHttps = (value: string) => {
   try {
@@ -46,29 +50,49 @@ export function SettingsView() {
   const [clearing, setClearing] = useState(false);
   const hasData = links.length > 0 || widgets.length > 0 || payments.length > 0;
   // Keyed on the saved values, so restoring demo data can't leave a form showing the old ones.
-  const payoutKey = `${settings.businessName}|${settings.walletAddress}|${settings.receiveAsset}`;
+  const payoutKey = `${settings.businessName}|${settings.receiveAsset}`;
   const brandKey = JSON.stringify(settings.branding);
+  const initial = useSearchParams().get("tab");
 
   return (
     <>
-      <PageHeader title="Settings" description="Payouts, branding, developer access and your team." />
-      <Bento>
-        <PayoutsCard key={payoutKey} settings={settings} />
-        <BrandingCard key={brandKey} settings={settings} />
-        <WebhooksCard hooks={settings.webhooks} />
-        <ApiKeys keys={settings.apiKeys} />
-        <TeamCard team={settings.team} />
-        <NotificationsCard prefs={settings.notifications} />
-        <Panel title="Appearance" description="Choose light or dark for the dashboard." className="col-span-12 @2xl:col-span-6">
-          <ThemeToggle appearance="segmented" />
-        </Panel>
-        <Panel title="Demo data" description="This is a mock product. Data is kept in this browser only." className="col-span-12 @2xl:col-span-6">
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" disabled={!hasData} onClick={() => setClearing(true)}>Clear data</Button>
-            <Button variant="ghost" onClick={() => { actions.restoreDemoData(); toast.success("Demo data restored"); }}>Restore demo data</Button>
-          </div>
-        </Panel>
-      </Bento>
+      <PageHeader title="Settings" description="Your business, developer access, team and this demo." />
+      <Tabs defaultSelectedKey={initial && TABS.some(([id]) => id === initial) ? initial : "business"}>
+        <TabList aria-label="Settings sections" className="overflow-x-auto">
+          {TABS.map(([id, label]) => <Tab key={id} id={id}>{label}</Tab>)}
+        </TabList>
+        <TabPanel id="business" className="pt-4">
+          <Bento>
+            <ProfileCard key={payoutKey} settings={settings} />
+            <BrandingCard key={brandKey} settings={settings} />
+          </Bento>
+        </TabPanel>
+        <TabPanel id="developers" className="pt-4">
+          <Bento>
+            <WebhooksCard hooks={settings.webhooks} />
+            <ApiKeys keys={settings.apiKeys} />
+          </Bento>
+        </TabPanel>
+        <TabPanel id="team" className="pt-4">
+          <Bento>
+            <TeamCard team={settings.team} />
+            <NotificationsCard prefs={settings.notifications} />
+          </Bento>
+        </TabPanel>
+        <TabPanel id="workspace" className="pt-4">
+          <Bento>
+            <Panel title="Appearance" description="Choose light or dark for the dashboard." className="col-span-12 @2xl:col-span-6">
+              <ThemeToggle appearance="segmented" />
+            </Panel>
+            <Panel title="Demo data" description="This is a mock product. Data is kept in this browser only." className="col-span-12 @2xl:col-span-6">
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" disabled={!hasData} onClick={() => setClearing(true)}>Clear data</Button>
+                <Button variant="ghost" onClick={() => { const before = getGateway(); actions.restoreDemoData(); toast.success("Demo data restored", { id: "demo-data", actions: [{ label: "Undo", onClick: () => actions.restoreSnapshot(before) }] }); }}>Restore demo data</Button>
+              </div>
+            </Panel>
+          </Bento>
+        </TabPanel>
+      </Tabs>
       <AlertDialog
         isOpen={clearing}
         onOpenChange={setClearing}
@@ -76,42 +100,45 @@ export function SettingsView() {
         description="Removes every link, widget and payment so you can see the empty states. You can restore them here."
         confirmLabel="Clear data"
         onConfirm={() => {
+          const before = getGateway();
           actions.clearDemoData();
           setClearing(false);
-          toast.success("Demo data cleared");
+          toast.success("Demo data cleared", { id: "demo-data", actions: [{ label: "Undo", onClick: () => actions.restoreSnapshot(before) }] });
         }}
       />
     </>
   );
 }
 
-function PayoutsCard({ settings }: { settings: Settings }) {
+function ProfileCard({ settings }: { settings: Settings }) {
   const [businessName, setBusinessName] = useState(settings.businessName);
-  const [wallet, setWallet] = useState(settings.walletAddress);
   const [receiveAsset, setReceiveAsset] = useState<AssetSymbol>(settings.receiveAsset);
-  const [walletInvalid, setWalletInvalid] = useState(false);
   const [nameInvalid, setNameInvalid] = useState(false);
-  const dirty = businessName !== settings.businessName || wallet !== settings.walletAddress || receiveAsset !== settings.receiveAsset;
+  const dirty = businessName !== settings.businessName || receiveAsset !== settings.receiveAsset;
 
   const save = () => {
-    const badWallet = !WALLET_PATTERN.test(wallet.trim());
     const badName = businessName.trim() === "";
-    setWalletInvalid(badWallet);
     setNameInvalid(badName);
-    if (badWallet || badName) return;
-    actions.updateSettings({ businessName: businessName.trim(), walletAddress: wallet.trim(), receiveAsset });
+    if (badName) return;
+    actions.updateSettings({ businessName: businessName.trim(), receiveAsset });
     toast.success("Settings saved");
   };
 
   return (
-    <Panel title="Payouts" description="New links and widgets default to these." className="col-span-12 @5xl:col-span-7">
+    <Panel title="Business" description="New links and widgets default to these." className="col-span-12 @5xl:col-span-7">
       <div className="grid grid-cols-1 gap-4 @xl:grid-cols-2">
         <Input label="Business name" value={businessName} onChange={(value) => { setBusinessName(value); setNameInvalid(false); }} isInvalid={nameInvalid} errorMessage="Enter a business name." hint="Shown to customers at checkout." />
         <AssetSelect label="Preferred receive asset" value={receiveAsset} onChange={setReceiveAsset} />
       </div>
-      <Input label="Wallet address" inputDir="ltr" value={wallet} onChange={(value) => { setWallet(value); setWalletInvalid(false); }} isInvalid={walletInvalid} errorMessage="Enter a .near account or a 0x address." hint="Funds settle straight to this wallet. We never hold them." />
+      <div className="dash-well flex flex-wrap items-center justify-between gap-2 rounded-xl p-2.5">
+        <span className="flex min-w-0 flex-col">
+          <span className="text-body-medium">Payout destination</span>
+          <span dir="ltr" className="truncate text-start text-caption-1-regular text-text-secondary">{shortAddress(settings.walletAddress)}</span>
+        </span>
+        <NavButton href="/dashboard/payouts" variant="secondary" size="small" trailingIcon={RiArrowRightLine}>Manage payouts</NavButton>
+      </div>
       <div className="flex justify-end gap-2">
-        {dirty && <Button variant="ghost" onClick={() => { setBusinessName(settings.businessName); setWallet(settings.walletAddress); setReceiveAsset(settings.receiveAsset); setWalletInvalid(false); setNameInvalid(false); }}>Discard</Button>}
+        {dirty && <Button variant="ghost" onClick={() => { setBusinessName(settings.businessName); setReceiveAsset(settings.receiveAsset); setNameInvalid(false); }}>Discard</Button>}
         <Button disabled={!dirty} onClick={save}>Save changes</Button>
       </div>
     </Panel>
@@ -176,7 +203,7 @@ function WebhooksCard({ hooks }: { hooks: Webhook[] }) {
                 <span dir="ltr" className="truncate text-body-medium" title={hook.url}>{hook.url}</span>
                 <span className="truncate text-caption-1-regular text-text-secondary">{hook.events.length} events, added {formatDate(hook.createdAt)}</span>
               </div>
-              <Switch size="sm" isSelected={hook.enabled} onChange={(enabled) => actions.updateWebhook(hook.id, { enabled })} aria-label={`Enable ${hook.url}`} />
+              <Switch size="sm" isSelected={hook.enabled} onChange={(enabled) => { actions.updateWebhook(hook.id, { enabled }); toast.success(enabled ? "Webhook turned on" : "Webhook turned off", { id: `webhook-${hook.id}`, description: "Mock endpoint. Nothing is sent." }); }} aria-label={`Enable ${hook.url}`} />
               <Button variant="ghost" size="small" iconOnly leadingIcon={RiDeleteBin6Line} aria-label={`Remove ${hook.url}`} onClick={() => { actions.removeWebhook(hook.id); toast.success("Webhook removed", { actions: [{ label: "Undo", onClick: () => actions.addWebhook(hook) }] }); }} />
             </li>
           ))}
@@ -265,7 +292,7 @@ function NotificationsCard({ prefs }: { prefs: NotificationPrefs }) {
               <span className="text-body-medium">{title}</span>
               <span className="text-caption-1-regular text-text-secondary">{detail}</span>
             </span>
-            <Switch size="sm" isSelected={prefs[key]} onChange={(value) => actions.updateNotifications({ [key]: value })} aria-label={title} />
+            <Switch size="sm" isSelected={prefs[key]} onChange={(value) => { actions.updateNotifications({ [key]: value }); toast.success("Alert preferences saved", { id: "alerts", description: "Mock preferences. No email is sent." }); }} aria-label={title} />
           </li>
         ))}
       </ul>
@@ -277,6 +304,7 @@ function ApiKeys({ keys }: { keys: ApiKey[] }) {
   const [creating, setCreating] = useState(false);
   const [label, setLabel] = useState("");
   const [secret, setSecret] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<ApiKey | null>(null);
 
   const close = () => {
     setCreating(false);
@@ -302,7 +330,7 @@ function ApiKeys({ keys }: { keys: ApiKey[] }) {
                 <span className="truncate text-body-medium">{key.label}</span>
                 <span dir="ltr" className="truncate text-caption-1-regular text-text-secondary">{key.prefix}… created {formatDate(key.createdAt)}</span>
               </div>
-              <Button variant="ghost" size="small" iconOnly leadingIcon={RiDeleteBin6Line} aria-label={`Revoke ${key.label}`} onClick={() => { actions.revokeApiKey(key.id); toast.success("Key revoked"); }} />
+              <Button variant="ghost" size="small" iconOnly leadingIcon={RiDeleteBin6Line} aria-label={`Revoke ${key.label}`} onClick={() => setRevoking(key)} />
             </li>
           ))}
         </ul>
@@ -330,6 +358,18 @@ function ApiKeys({ keys }: { keys: ApiKey[] }) {
           )}
         </ModalFooter>
       </Modal>
+      <AlertDialog
+        isOpen={revoking !== null}
+        onOpenChange={(open) => !open && setRevoking(null)}
+        title="Revoke this key?"
+        description={`Anything using "${revoking?.label}" stops authenticating right away. A revoked key can't be restored.`}
+        confirmLabel="Revoke key"
+        onConfirm={() => {
+          if (revoking) actions.revokeApiKey(revoking.id);
+          setRevoking(null);
+          toast.success("Key revoked");
+        }}
+      />
     </Panel>
   );
 }

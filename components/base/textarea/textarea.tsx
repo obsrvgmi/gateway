@@ -274,7 +274,7 @@ export function Textarea({
       // only for unlabelled fields that don't provide one.
       aria-label={
         textFieldProps["aria-label"] ??
-        (!label && typeof placeholder === "string" ? placeholder : undefined)
+        (typeof label === "string" ? label : typeof placeholder === "string" ? placeholder : undefined)
       }
     >
       {({ isRequired, isInvalid }) => (

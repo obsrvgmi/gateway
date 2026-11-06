@@ -1,13 +1,14 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Selection, SortDescriptor } from "react-aria-components";
 import { today, getLocalTimeZone } from "@internationalized/date";
 import { RiArrowGoBackLine, RiDownload2Line, RiExchangeDollarLine, RiFileCopyLine } from "@remixicon/react";
 import { Button } from "@/components/base/buttons/button";
 import { Checkbox } from "@/components/base/checkbox/checkbox";
-import { DateRangePicker, type DateRangeValue } from "@/components/base/date-picker/date-range-picker";
+import type { DateRangeValue } from "@/components/base/date-picker/date-range-picker";
 import { AlertDialog } from "@/components/base/modal/modal";
 import { Pagination } from "@/components/base/pagination/pagination";
 import { SearchField } from "@/components/base/search-field/search-field";
@@ -26,14 +27,19 @@ import { cx } from "@/utils/cx";
 import { RankBars, assetColor } from "../charts";
 import { downloadCsv } from "../csv";
 import { formatCompactUsd, formatCount, formatPercent, formatRowDate, formatSeconds } from "../fmt";
-import { PaymentDrawer } from "../payment-drawer";
-import { Bento, copyText, EmptyState, PageHeader, Panel, PAYMENT_STATUS_LABEL, PaymentStatusChip } from "../ui";
+import { preloadPaymentDrawer } from "../preload";
+import { Bento, copyText, EmptyState, PageHeader, Panel, PAYMENT_STATUS_LABEL, PaymentStatusChip, SIMULATED, Stat, useWideMain } from "../ui";
+
+const PaymentDrawer = dynamic(() => preloadPaymentDrawer().then((module) => module.PaymentDrawer), { ssr: false });
+// Motion and the calendar load with the "Custom range" option, not with the page.
+const DateRangePicker = dynamic(() => import("@/components/base/date-picker/date-range-picker").then((module) => module.DateRangePicker), { ssr: false, loading: () => <div aria-hidden className="h-10 w-56 rounded-xl bg-background-secondary-default" /> });
 
 const PAGE_SIZE = 12;
 const DAY = 86_400_000;
 const STATUSES: PaymentStatus[] = ["settled", "processing", "refunded", "expired"];
 const PRESETS = [["all", "Any time"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["90", "Last 90 days"], ["custom", "Custom range"]] as const;
-type Preset = (typeof PRESETS)[number][0];
+/** `custom-days` and `window` only arrive from Overview links, so they have no entry in the menu. */
+type Preset = (typeof PRESETS)[number][0] | "custom-days" | "window";
 type SourceFilter = "all" | "link" | "widget";
 
 const SORTERS: Record<string, (a: Payment, b: Payment) => number> = {
@@ -49,46 +55,42 @@ function SortLabel({ children, direction }: { children: string; direction?: "asc
   return <span className="inline-flex items-center gap-1">{children}<span aria-hidden className="w-3 text-text-secondary">{direction === "ascending" ? "↑" : direction === "descending" ? "↓" : ""}</span></span>;
 }
 
-/**
- * One layout is mounted at a time, not two toggled with CSS: token icons define SVG gradients by id,
- * and an id that resolves inside a display:none table paints nothing in the visible list.
- */
-function useWideMain() {
-  const [wide, setWide] = useState(() => (document.getElementById("main")?.clientWidth ?? 0) >= 768);
-  useEffect(() => {
-    const main = document.getElementById("main");
-    if (!main) return;
-    const observer = new ResizeObserver(() => setWide(main.clientWidth >= 768));
-    observer.observe(main);
-    return () => observer.disconnect();
-  }, []);
-  return wide;
-}
+const presetFrom = (days: string | null): Preset => (days === "7" || days === "30" || days === "90" ? days : days ? "custom-days" : "all");
 
 export function PaymentsView() {
   const { payments } = useGateway();
   const params = useSearchParams();
   const wide = useWideMain();
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<PaymentStatus | "all">("all");
-  const [asset, setAsset] = useState<AssetSymbol | "all">("all");
-  const [source, setSource] = useState<SourceFilter>("all");
+  // Every filter can arrive in the URL, so a figure elsewhere can open exactly the rows behind it.
+  const [query, setQuery] = useState(params.get("q") ?? "");
+  const [status, setStatus] = useState<PaymentStatus | "all">((params.get("status") as PaymentStatus | null) ?? "all");
+  const [asset, setAsset] = useState<AssetSymbol | "all">((params.get("asset") as AssetSymbol | null) ?? "all");
+  const [source, setSource] = useState<SourceFilter>((params.get("type") as SourceFilter | null) ?? "all");
   const [sourceId, setSourceId] = useState<string | null>(params.get("source"));
-  const [preset, setPreset] = useState<Preset>("all");
+  const [chain, setChain] = useState<string | null>(params.get("chain"));
+  const [span] = useState(() => {
+    const from = Number(params.get("from"));
+    const to = Number(params.get("to"));
+    return from && to ? { from, to, label: params.get("label") ?? "Selected period" } : null;
+  });
+  const [preset, setPreset] = useState<Preset>(span ? "window" : presetFrom(params.get("range")));
   const [custom, setCustom] = useState<DateRangeValue | null>(null);
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [drawerArmed, setDrawerArmed] = useState(false);
+  if (openId && !drawerArmed) setDrawerArmed(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [refunding, setRefunding] = useState(false);
   const [sort, setSort] = useState<SortDescriptor>({ column: "date", direction: "descending" });
 
   const now = metricsNow(payments);
   const dateBounds = useMemo((): [number, number] | null => {
+    if (preset === "window" && span) return [span.from, span.to];
     if (preset === "custom") return custom ? [utc(custom.start), utc(custom.end) + DAY] : null;
     if (preset === "all") return null;
-    const days = Number(preset);
+    const days = Number(preset === "custom-days" ? params.get("range") : preset);
     return [now - now % DAY - (days - 1) * DAY, Infinity];
-  }, [preset, custom, now]);
+  }, [preset, custom, now, span, params]);
 
   // Everything but status and asset, so each facet can show what picking it would give.
   const scoped = useMemo(() => {
@@ -98,11 +100,12 @@ export function PaymentsView() {
       return (
         (source === "all" || p.sourceType === source) &&
         (sourceId === null || p.sourceId === sourceId) &&
+        (chain === null || ASSETS[p.payAsset].chain === chain) &&
         (dateBounds === null || (time >= dateBounds[0] && time < dateBounds[1])) &&
         (needle === "" || [p.id, p.sourceName, p.payAsset, p.payer].some((field) => field.toLowerCase().includes(needle)))
       );
     });
-  }, [payments, query, source, sourceId, dateBounds]);
+  }, [payments, query, source, sourceId, chain, dateBounds]);
 
   const filtered = useMemo(() => scoped.filter((p) => (status === "all" || p.status === status) && (asset === "all" || p.payAsset === asset)), [scoped, status, asset]);
   const sorted = useMemo(() => {
@@ -125,7 +128,10 @@ export function PaymentsView() {
     asset !== "all" && { id: "asset", label: `Paid with: ${asset}` },
     source !== "all" && { id: "source", label: source === "link" ? "Payment links" : "Widgets" },
     sourceName && { id: "sourceId", label: `Source: ${sourceName}` },
-    preset !== "all" && (preset !== "custom" || custom) && { id: "date", label: preset === "custom" ? "Custom dates" : PRESETS.find(([key]) => key === preset)?.[1] ?? "" },
+    chain && { id: "chain", label: `Chain: ${chain}` },
+    preset === "window" && span && { id: "date", label: span.label },
+    preset === "custom-days" && { id: "date", label: `Last ${params.get("range")} days` },
+    preset !== "all" && preset !== "window" && preset !== "custom-days" && (preset !== "custom" || custom) && { id: "date", label: preset === "custom" ? "Custom dates" : PRESETS.find(([key]) => key === preset)?.[1] ?? "" },
     query.trim() && { id: "query", label: `Search: ${query.trim()}` },
   ].filter((chip): chip is { id: string; label: string } => Boolean(chip));
 
@@ -135,6 +141,7 @@ export function PaymentsView() {
     if (id === "asset") setAsset("all");
     if (id === "source") setSource("all");
     if (id === "sourceId") setSourceId(null);
+    if (id === "chain") setChain(null);
     if (id === "date") { setPreset("all"); setCustom(null); }
     if (id === "query") setQuery("");
     resetSelection();
@@ -158,7 +165,7 @@ export function PaymentsView() {
   const refundable = selectedRows.filter((p) => p.status === "settled");
   const exportRows = (list: Payment[]) => {
     downloadCsv(list);
-    toast.success(`Exported ${formatCount(list.length)} payments`);
+    toast.success(`Exported ${formatCount(list.length)} payments`, { id: "export", description: "payments.csv is in your downloads." });
   };
 
   if (payments.length === 0) {
@@ -186,17 +193,13 @@ export function PaymentsView() {
           ["Avg settlement", formatSeconds(summary.avgSettle), summary.avgSettle === null ? "Nothing settled" : `95% within ${summary.p95}s`],
           ["Average payment", formatUsd(summary.avgTicket), `${formatCount(summary.payers)} unique payers`],
         ].map(([label, value, note]) => (
-          <div key={label} className="col-span-6 flex min-w-0 flex-col gap-0.5 rounded-3xl border border-border-button-default bg-background-inner-default p-4 shadow-card @5xl:col-span-3">
-            <p className="truncate text-body-regular text-text-secondary">{label}</p>
-            <p className="truncate text-title-2-semibold">{value}</p>
-            <p className="truncate text-caption-1-regular text-text-secondary">{note}</p>
-          </div>
+          <Stat key={label} label={label} value={value} note={note} />
         ))}
 
         <Panel className="col-span-12 gap-3 p-3 @3xl:p-3 @5xl:col-span-9">
           <div className="flex flex-wrap items-center gap-2">
             <SearchField aria-label="Search payments" placeholder="Search ID, source, asset or payer" value={query} onChange={(value) => { setQuery(value); resetSelection(); }} className="min-w-[200px] flex-1" />
-            <Select aria-label="Filter by date" selectedKey={preset} onSelectionChange={(key) => { setPreset(key as Preset); resetSelection(); }}>
+            <Select aria-label="Filter by date" selectedKey={preset === "window" || preset === "custom-days" ? "custom" : preset} onSelectionChange={(key) => { setPreset(key as Preset); resetSelection(); }}>
               {PRESETS.map(([id, label]) => <SelectItem key={id} id={id} textValue={label}>{label}</SelectItem>)}
             </Select>
             <Select aria-label="Filter by status" selectedKey={status} onSelectionChange={(key) => { setStatus(key as PaymentStatus | "all"); resetSelection(); }}>
@@ -253,7 +256,7 @@ export function PaymentsView() {
                   <TableHeader>
                     <TableColumn aria-label="Select"><Checkbox slot="selection" size="sm" /></TableColumn>
                     <TableColumn id="source" isRowHeader allowsSorting>{({ sortDirection }) => <SortLabel direction={sortDirection}>Source</SortLabel>}</TableColumn>
-                    <TableColumn>Paid with</TableColumn>
+                    <TableColumn>Route</TableColumn>
                     <TableColumn id="usd" allowsSorting>{({ sortDirection }) => <SortLabel direction={sortDirection}>Amount</SortLabel>}</TableColumn>
                     <TableColumn id="status" allowsSorting>{({ sortDirection }) => <SortLabel direction={sortDirection}>Status</SortLabel>}</TableColumn>
                     <TableColumn id="date" allowsSorting>{({ sortDirection }) => <SortLabel direction={sortDirection}>Date (UTC)</SortLabel>}</TableColumn>
@@ -267,6 +270,7 @@ export function PaymentsView() {
                           <span className="flex items-center gap-2 whitespace-nowrap tabular-nums">
                             <TokenMark symbol={payment.payAsset} size="sm" />
                             {formatToken(payment.payAmount, payment.payAsset)}
+                            <span className="text-text-secondary">to {payment.receiveAsset}</span>
                           </span>
                         </TableCell>
                         <TableCell className="whitespace-nowrap tabular-nums">{formatUsd(payment.usd)}</TableCell>
@@ -324,7 +328,7 @@ export function PaymentsView() {
         </div>
       </Bento>
 
-      <PaymentDrawer paymentId={openId} onClose={() => setOpenId(null)} />
+      {drawerArmed && <PaymentDrawer paymentId={openId} onClose={() => setOpenId(null)} />}
       <AlertDialog
         isOpen={refunding}
         onOpenChange={setRefunding}
@@ -335,7 +339,7 @@ export function PaymentsView() {
           actions.refundPayments(refundable.map((p) => p.id));
           setRefunding(false);
           setSelected(new Set());
-          toast.success(`${formatCount(refundable.length)} payments marked as refunded`);
+          toast.success(`${formatCount(refundable.length)} payments marked as refunded`, { description: SIMULATED });
         }}
       />
     </>

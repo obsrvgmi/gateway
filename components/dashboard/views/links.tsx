@@ -2,10 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { RiAddLine, RiDeleteBin6Line, RiExchangeDollarLine, RiExternalLinkLine, RiFileCopyLine, RiLayoutGridLine, RiLinksLine, RiListCheck, RiMore2Fill, RiPauseLine, RiPlayLine } from "@remixicon/react";
+import { RiAddLine, RiDeleteBin6Line, RiExchangeDollarLine, RiExternalLinkLine, RiFileCopy2Line, RiFileCopyLine, RiLayoutGridLine, RiLinksLine, RiListCheck, RiMore2Fill, RiPauseLine, RiPencilLine, RiPlayLine } from "@remixicon/react";
 import { Button } from "@/components/base/buttons/button";
 import { Dropdown, DropdownDivider, DropdownGroup, DropdownItem, DropdownPopover, DropdownTrigger } from "@/components/base/dropdown/dropdown";
-import { AlertDialog } from "@/components/base/modal/modal";
 import { SearchField } from "@/components/base/search-field/search-field";
 import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
 import { Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from "@/components/base/table/table";
@@ -14,18 +13,17 @@ import { TokenMark } from "@/components/brand/token-mark";
 import { NavButton } from "@/components/nav-button";
 import { formatDate, formatUsd, formatUsdWhole } from "@/lib/format";
 import { sourceTotals, sourceTrend } from "@/lib/metrics";
-import { actions, useGateway } from "@/lib/store";
+import { actions, newId, useGateway } from "@/lib/store";
 import type { LinkStatus, PaymentLink } from "@/lib/types";
 import { Sparkline } from "../charts";
 import { formatCount, plural } from "../fmt";
-import { AddTile, Bento, copyText, EmptyState, LinkStatusChip, PageHeader, Panel } from "../ui";
+import { AddTile, Bento, copyText, EmptyState, LinkStatusChip, PageHeader, Panel, Stat } from "../ui";
 
 type Tab = LinkStatus | "all";
 const TABS: [Tab, string][] = [["all", "All"], ["active", "Active"], ["paused", "Paused"], ["expired", "Expired"]];
 
 export function LinksView() {
   const { links, payments } = useGateway();
-  const [deleting, setDeleting] = useState<PaymentLink | null>(null);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<Tab>("all");
   const [view, setView] = useState<"cards" | "table">("cards");
@@ -59,11 +57,7 @@ export function LinksView() {
           ["Settled payments", formatCount(count), "All time, across links"],
           ["Top link", rows[0].totals.volume ? rows[0].link.title : "None yet", rows[0].totals.volume ? formatUsdWhole(rows[0].totals.volume) : "No settled payments"],
         ].map(([label, value, note]) => (
-          <div key={label} className="col-span-6 flex min-w-0 flex-col gap-0.5 rounded-3xl border border-border-button-default bg-background-inner-default p-4 shadow-card @5xl:col-span-3">
-            <p className="truncate text-body-regular text-text-secondary">{label}</p>
-            <p className="truncate text-title-2-semibold" title={value}>{value}</p>
-            <p className="truncate text-caption-1-regular text-text-secondary">{note}</p>
-          </div>
+          <Stat key={label} label={label} value={<span title={value}>{value}</span>} note={note} />
         ))}
       </Bento>
 
@@ -92,9 +86,9 @@ export function LinksView() {
                     <p className="truncate text-caption-1-regular text-text-secondary">{link.amount === null ? "Customer sets amount" : formatUsd(link.amount)}, to {link.receiveAsset}</p>
                   </div>
                 </div>
-                <LinkMenu link={link} onDelete={() => setDeleting(link)} />
+                <LinkMenu link={link} />
               </div>
-              <div className="flex items-end justify-between gap-3 rounded-2xl bg-background-secondary-default p-3">
+              <div className="dash-well flex items-end justify-between gap-3 rounded-2xl p-3">
                 <div className="flex min-w-0 flex-col">
                   <span className="truncate text-headline-semibold">{formatUsdWhole(totals.volume)}</span>
                   <span className="text-caption-1-regular text-text-secondary tabular-nums">{plural(totals.count, "payment")}</span>
@@ -133,33 +127,18 @@ export function LinksView() {
                   <TableCell className="whitespace-nowrap tabular-nums">{link.amount === null ? "Customer sets" : `${formatUsd(link.amount)} to ${link.receiveAsset}`}</TableCell>
                   <TableCell className="tabular-nums">{formatCount(totals.count)}</TableCell>
                   <TableCell className="tabular-nums">{formatUsd(totals.volume)}</TableCell>
-                  <TableCell><LinkMenu link={link} onDelete={() => setDeleting(link)} /></TableCell>
+                  <TableCell><LinkMenu link={link} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </Panel>
       )}
-
-      <AlertDialog
-        isOpen={deleting !== null}
-        onOpenChange={(open) => !open && setDeleting(null)}
-        title="Delete this link?"
-        description={`"${deleting?.title}" will stop accepting payments right away. Past payments stay in your history.`}
-        confirmLabel="Delete link"
-        onConfirm={() => {
-          if (deleting) {
-            actions.removeLink(deleting.id);
-            toast.success("Link deleted");
-          }
-          setDeleting(null);
-        }}
-      />
     </>
   );
 }
 
-function LinkMenu({ link, onDelete }: { link: PaymentLink; onDelete: () => void }) {
+function LinkMenu({ link }: { link: PaymentLink }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const run = (action: () => void) => () => {
@@ -168,23 +147,43 @@ function LinkMenu({ link, onDelete }: { link: PaymentLink; onDelete: () => void 
   };
   return (
     <Dropdown isOpen={open} onOpenChange={setOpen}>
-      <DropdownTrigger aria-label={`Actions for ${link.title}`} className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-2lg border border-border-button-default bg-background-primary-default text-foreground-icon-primary outline-none data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring">
+      <DropdownTrigger aria-label={`Actions for ${link.title}`} className="button-key inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-2lg border bg-background-primary-default text-foreground-icon-primary outline-none data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring">
         <RiMore2Fill className="size-[18px]" aria-hidden />
       </DropdownTrigger>
       <DropdownPopover aria-label={`Actions for ${link.title}`} placement="bottom end" className="w-[200px] p-2">
         <DropdownGroup>
+          <MenuRow icon={RiPencilLine} label="Edit" onSelect={run(() => router.push(`/dashboard/links/${link.id}/edit`))} />
           <MenuRow icon={RiFileCopyLine} label="Copy link" onSelect={run(() => copyText(`${window.location.origin}/pay/${link.id}`, "Link"))} />
+          <MenuRow
+            icon={RiFileCopy2Line}
+            label="Duplicate"
+            onSelect={run(() => {
+              actions.addLink({ ...link, id: newId("lnk_"), title: `${link.title} copy`, status: "paused", createdAt: new Date().toISOString() });
+              toast.success("Link duplicated", { description: "The copy starts paused." });
+            })}
+          />
           <MenuRow icon={RiExternalLinkLine} label="Open checkout" onSelect={run(() => router.push(`/pay/${link.id}`))} />
           <MenuRow icon={RiExchangeDollarLine} label="View payments" onSelect={run(() => router.push(`/dashboard/payments?source=${link.id}`))} />
           {link.status !== "expired" && (
             <MenuRow
               icon={link.status === "active" ? RiPauseLine : RiPlayLine}
               label={link.status === "active" ? "Pause" : "Resume"}
-              onSelect={run(() => actions.updateLink(link.id, { status: link.status === "active" ? "paused" : "active" }))}
+              onSelect={run(() => {
+                const { status } = link;
+                actions.updateLink(link.id, { status: status === "active" ? "paused" : "active" });
+                toast.success(status === "active" ? "Link paused" : "Link resumed", { id: `link-${link.id}`, description: status === "active" ? "It won't take payments until you resume it." : "It's taking payments again.", actions: [{ label: "Undo", onClick: () => actions.updateLink(link.id, { status }) }] });
+              })}
             />
           )}
           <DropdownDivider />
-          <MenuRow icon={RiDeleteBin6Line} label="Delete" onSelect={run(onDelete)} />
+          <MenuRow
+            icon={RiDeleteBin6Line}
+            label="Delete"
+            onSelect={run(() => {
+              actions.removeLink(link.id);
+              toast.success("Link deleted", { description: "Past payments stay in your history.", actions: [{ label: "Undo", onClick: () => actions.addLink(link) }] });
+            })}
+          />
         </DropdownGroup>
       </DropdownPopover>
     </Dropdown>
