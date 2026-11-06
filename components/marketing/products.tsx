@@ -238,7 +238,7 @@ function WidgetPlate() {
         <div className="console-embed">
           <p className="stage-caption">Embed</p>
           <pre dir="ltr" className="console-code"><code>{embedSnippet(DISPLAY_ORIGIN, "wgt_lumen", "html", { accent, radius, receiveAsset: receive, buttonLabel: "Buy print" })}</code></pre>
-          <p className="text-caption-1-regular text-text-secondary">Live preview. Payments are simulated.</p>
+          <p className="text-caption-1-regular text-text-secondary">Live preview with illustrative prices. No funds move here.</p>
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { RiAddLine, RiDeleteBin6Line, RiExchangeDollarLine, RiFileCopy2Line, RiLayoutMasonryLine, RiPauseLine, RiPencilLine, RiPlayLine } from "@remixicon/react";
 import { Button } from "@/components/base/buttons/button";
@@ -102,7 +103,7 @@ export function WidgetsView() {
               <WidgetThumb widget={widget} />
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-col">
-                  <h2 className="truncate text-body-semibold" title={widget.name}>{widget.name}</h2>
+                  <h2 className="truncate text-body-semibold" title={widget.name}><Link href={`/dashboard/widgets/${widget.id}`} className="rounded outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring">{widget.name}</Link></h2>
                   <p className="truncate text-caption-1-regular text-text-secondary" dir="ltr">{widget.site || "No site set"}</p>
                 </div>
                 <WidgetStatusChip status={widget.status} />

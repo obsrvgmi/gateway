@@ -11,6 +11,10 @@ const eslintConfig = defineConfig([
     files: ["components/base/date-picker/date-picker.tsx", "components/base/date-picker/shared.tsx"],
     rules: { "react-hooks/set-state-in-effect": "off" },
   },
+  {
+    // After signing in or out, a full load is what we want: the session changed, so the store starts fresh.
+    rules: { "@next/next/no-location-assign-relative-destination": "off" },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

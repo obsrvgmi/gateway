@@ -162,7 +162,7 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
         </Panel>
 
         <div className="dash-plate col-span-12 flex min-w-0 flex-col items-center gap-3 rounded-3xl p-4 @4xl:sticky @4xl:top-[4.5rem] @4xl:col-span-5">
-          <SimulatedTag>Preview, this is what customers see</SimulatedTag>
+          <SimulatedTag>Preview, illustrative prices</SimulatedTag>
           <CheckoutWidget
             merchant={settings.businessName}
             title={title || "Your link title"}

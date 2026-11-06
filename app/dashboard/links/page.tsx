@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { LinksView } from "@/components/dashboard/views/links";
 
-// DashboardShell mounts this page only after localStorage restores.
+// DashboardShell mounts this page only after the workspace loads.
 export const instant = false;
 export const metadata: Metadata = { title: "Payment Links" };
 

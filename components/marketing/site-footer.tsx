@@ -50,7 +50,7 @@ export function SiteFooter() {
 
         <p aria-hidden className="foot-micro">{MICROPRINT}</p>
         <div className="foot-legal">
-          <p>{SITE.name} is a working name and a working demo. Payments here are simulated and no funds move.</p>
+          <p>{SITE.name} is non-custodial software. Your wallet holds your funds. Payments route through NEAR Intents. <a href="/terms" className="underline">Terms</a> and <a href="/privacy" className="underline">Privacy</a>. The demos on this page use illustrative prices and move no funds.</p>
           <p className="foot-powered"><span aria-hidden className="stage-powered-dot" />Powered by NEAR Intents</p>
         </div>
       </div>

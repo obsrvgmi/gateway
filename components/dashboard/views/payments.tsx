@@ -9,7 +9,6 @@ import { RiArrowGoBackLine, RiDownload2Line, RiExchangeDollarLine, RiFileCopyLin
 import { Button } from "@/components/base/buttons/button";
 import { Checkbox } from "@/components/base/checkbox/checkbox";
 import type { DateRangeValue } from "@/components/base/date-picker/date-range-picker";
-import { AlertDialog } from "@/components/base/modal/modal";
 import { Pagination } from "@/components/base/pagination/pagination";
 import { SearchField } from "@/components/base/search-field/search-field";
 import { Select, SelectItem } from "@/components/base/select/select";
@@ -21,14 +20,15 @@ import { NavButton } from "@/components/nav-button";
 import { ASSETS, PAY_ASSETS } from "@/lib/assets";
 import { formatToken, formatUsd, formatUsdWhole } from "@/lib/format";
 import { assetMix, metricsNow, statusCounts, summarize } from "@/lib/metrics";
-import { actions, useGateway } from "@/lib/store";
+import { useGateway } from "@/lib/store";
+import { RefundDialog } from "../refund-dialog";
 import type { AssetSymbol, Payment, PaymentStatus } from "@/lib/types";
 import { cx } from "@/utils/cx";
 import { RankBars, assetColor } from "../charts";
 import { downloadCsv } from "../csv";
 import { formatCompactUsd, formatCount, formatPercent, formatRowDate, formatSeconds } from "../fmt";
 import { preloadPaymentDrawer } from "../preload";
-import { Bento, copyText, EmptyState, PageHeader, Panel, PAYMENT_STATUS_LABEL, PaymentStatusChip, SIMULATED, Stat, useWideMain } from "../ui";
+import { Bento, copyText, EmptyState, PageHeader, Panel, PAYMENT_STATUS_LABEL, PaymentStatusChip, Stat, useWideMain } from "../ui";
 
 const PaymentDrawer = dynamic(() => preloadPaymentDrawer().then((module) => module.PaymentDrawer), { ssr: false });
 // Motion and the calendar load with the "Custom range" option, not with the page.
@@ -36,7 +36,7 @@ const DateRangePicker = dynamic(() => import("@/components/base/date-picker/date
 
 const PAGE_SIZE = 12;
 const DAY = 86_400_000;
-const STATUSES: PaymentStatus[] = ["settled", "processing", "refunded", "expired"];
+const STATUSES: PaymentStatus[] = ["settled", "processing", "refunded", "failed", "expired"];
 const PRESETS = [["all", "Any time"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["90", "Last 90 days"], ["custom", "Custom range"]] as const;
 /** `custom-days` and `window` only arrive from Overview links, so they have no entry in the menu. */
 type Preset = (typeof PRESETS)[number][0] | "custom-days" | "window";
@@ -231,7 +231,7 @@ export function PaymentsView() {
               <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" size="small" leadingIcon={RiDownload2Line} onClick={() => exportRows(selectedRows)}>Export</Button>
                 <Button variant="secondary" size="small" leadingIcon={RiFileCopyLine} onClick={() => copyText(selectedRows.map((p) => p.id).join("\n"), "Payment IDs")}>Copy IDs</Button>
-                <Button variant="secondary" size="small" leadingIcon={RiArrowGoBackLine} disabled={refundable.length === 0} onClick={() => setRefunding(true)}>Mark refunded</Button>
+                <Button variant="secondary" size="small" leadingIcon={RiArrowGoBackLine} disabled={refundable.length !== 1} onClick={() => setRefunding(true)}>Refund</Button>
                 <Button variant="ghost" size="small" onClick={() => setSelected(new Set())}>Deselect</Button>
               </div>
             </div>
@@ -329,19 +329,7 @@ export function PaymentsView() {
       </Bento>
 
       {drawerArmed && <PaymentDrawer paymentId={openId} onClose={() => setOpenId(null)} />}
-      <AlertDialog
-        isOpen={refunding}
-        onOpenChange={setRefunding}
-        title={`Mark ${formatCount(refundable.length)} payments as refunded?`}
-        description="Only settled payments change. They leave your settled volume. No funds move in this demo."
-        confirmLabel="Mark refunded"
-        onConfirm={() => {
-          actions.refundPayments(refundable.map((p) => p.id));
-          setRefunding(false);
-          setSelected(new Set());
-          toast.success(`${formatCount(refundable.length)} payments marked as refunded`, { description: SIMULATED });
-        }}
-      />
+      <RefundDialog payment={refunding ? (refundable[0] ?? null) : null} onClose={() => { setRefunding(false); setSelected(new Set()); }} />
     </>
   );
 }

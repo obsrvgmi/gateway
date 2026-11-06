@@ -26,13 +26,13 @@ function Cell({ href, label, value, note }: { href: string; label: string; value
 
 /** The merchant's position, in the order money moves through it. */
 export function PositionStrip() {
-  const { payments, payouts, settings } = useGateway();
+  const { payments, payouts, settings, settlement, prices } = useGateway();
   const [paying, setPaying] = useState(false);
   const [armed, setArmed] = useState(false);
   if (paying && !armed) setArmed(true);
   const { holdDays, schedule } = settings.payouts;
   const now = metricsNow(payments);
-  const position = useMemo(() => ledger(payments, payouts, holdDays, now), [payments, payouts, holdDays, now]);
+  const position = useMemo(() => ledger(payments, payouts, holdDays, now, settlement, prices), [payments, payouts, holdDays, now, settlement, prices]);
   const next = nextPayoutAt(schedule, now);
 
   return (
@@ -40,10 +40,10 @@ export function PositionStrip() {
       <div className="pos-grid">
         <Cell href="/dashboard/payments?status=processing" label="Arriving" value={formatUsd(position.arrivingUsd)} note={position.arrivingCount ? `${plural(position.arrivingCount, "payment")} in flight` : "Nothing in flight"} />
         <Cell href="/dashboard/payouts#hold" label="On hold" value={formatUsd(position.heldUsd)} note={holdDays ? `${holdDays}-day refund window` : "No refund window set"} />
-        <Cell href="/dashboard/payouts" label="Available" value={formatUsd(position.availableUsd)} note={`Paid out ${formatUsd(position.paidOutUsd)} to date`} />
+        <Cell href="/dashboard/payouts" label="Available" value={settlement.balancesFresh ? formatUsd(position.availableUsd) : "Unavailable"} note={settlement.balancesFresh ? `Paid out ${formatUsd(position.paidOutUsd)} to date` : "Couldn't read your balance just now"} />
         <div className="pos-cell pos-next">
           <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate text-body-regular text-text-secondary">{next ? `Next payout, ${formatPayoutDate(next)}` : "Automatic payouts are off"}</span>
+            <span className="truncate text-body-regular text-text-secondary">{next ? `Payout reminder, ${formatPayoutDate(next)}` : "You choose when to pay out"}</span>
             <span className="truncate text-title-2-semibold tabular-nums">{next ? `About ${formatUsd(nextPayoutEstimate(position, next))}` : "Manual"}</span>
             <span dir="ltr" className="truncate text-start text-caption-1-regular text-text-secondary">To {shortAddress(settings.walletAddress)}</span>
           </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { RiAddLine, RiDeleteBin6Line, RiExchangeDollarLine, RiExternalLinkLine, RiFileCopy2Line, RiFileCopyLine, RiLayoutGridLine, RiLinksLine, RiListCheck, RiMore2Fill, RiPauseLine, RiPencilLine, RiPlayLine } from "@remixicon/react";
@@ -82,7 +83,7 @@ export function LinksView() {
                 <div className="flex min-w-0 items-center gap-2.5">
                   <TokenMark symbol={link.receiveAsset} />
                   <div className="flex min-w-0 flex-col">
-                    <h2 className="truncate text-body-semibold" title={link.title}>{link.title}</h2>
+                    <h2 className="truncate text-body-semibold" title={link.title}><Link href={`/dashboard/links/${link.id}`} className="rounded outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring">{link.title}</Link></h2>
                     <p className="truncate text-caption-1-regular text-text-secondary">{link.amount === null ? "Customer sets amount" : formatUsd(link.amount)}, to {link.receiveAsset}</p>
                   </div>
                 </div>
@@ -119,7 +120,7 @@ export function LinksView() {
                 <TableRow key={link.id} id={link.id}>
                   <TableCell>
                     <span className="flex max-w-[280px] flex-col">
-                      <span className="truncate text-body-medium text-text-primary" title={link.title}>{link.title}</span>
+                      <Link href={`/dashboard/links/${link.id}`} className="truncate rounded text-body-medium text-text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-border-focus-ring" title={link.title}>{link.title}</Link>
                       <span className="text-caption-1-regular text-text-secondary">Created {formatDate(link.createdAt)}</span>
                     </span>
                   </TableCell>

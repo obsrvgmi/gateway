@@ -1,18 +1,17 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { RiArrowGoBackLine, RiCheckLine, RiCloseLine, RiLoader4Line } from "@remixicon/react";
+import { RiArrowGoBackLine, RiCheckLine, RiCloseLine, RiExternalLinkLine, RiLoader4Line } from "@remixicon/react";
 import { Button } from "@/components/base/buttons/button";
 import { Drawer, DrawerBody, DrawerFooter, DrawerHeader } from "@/components/base/drawer/drawer";
-import { AlertDialog } from "@/components/base/modal/modal";
-import { toast } from "@/components/base/toast/toast";
 import { ASSETS } from "@/lib/assets";
 import { formatToken, formatUsd, shortAddress } from "@/lib/format";
 import { paymentTimeline, routeFee, type TimelineStep } from "@/lib/metrics";
-import { actions, useGateway } from "@/lib/store";
+import { useGateway } from "@/lib/store";
 import { cx } from "@/utils/cx";
 import { formatClock, formatStamp } from "./fmt";
-import { CopyButton, PaymentStatusChip, SIMULATED } from "./ui";
+import { RefundDialog } from "./refund-dialog";
+import { CopyButton, ModeTag, PaymentStatusChip } from "./ui";
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -70,9 +69,17 @@ export function PaymentDrawer({ paymentId, onClose }: { paymentId: string | null
                   <Detail label="Route fee">{formatUsd(routeFee(payment))}</Detail>
                   <Detail label={payment.status === "settled" ? "You received" : "You receive"}>{formatToken(payment.receiveAmount, payment.receiveAsset)}</Detail>
                   <Detail label="Settlement">{payment.settleSeconds !== null ? `${payment.settleSeconds} seconds` : "Not settled"}</Detail>
-                  <Detail label="Payer"><span dir="ltr" title={payment.payer}>{shortAddress(payment.payer)}</span></Detail>
+                  <Detail label="Customer wallet"><span dir="ltr" title={payment.payer}>{shortAddress(payment.payer)}</span></Detail>
+                  {payment.detail?.customerEmail && <Detail label="Customer email"><span dir="ltr">{payment.detail.customerEmail}</span></Detail>}
+                  {Boolean(payment.detail?.refundedUsd) && payment.status === "settled" && <Detail label="Refunded so far">{formatUsd(payment.detail?.refundedUsd ?? 0)}</Detail>}
                   <Detail label="Date">{formatStamp(payment.createdAt)}</Detail>
+                  {[...(payment.detail?.originTxs ?? []).map((tx) => ({ ...tx, label: "Customer's transaction" })), ...(payment.detail?.destinationTxs ?? []).map((tx) => ({ ...tx, label: "Settlement transaction" }))].map((tx) => (
+                    <Detail key={tx.hash} label={tx.label}>
+                      {tx.explorerUrl ? <a href={tx.explorerUrl} target="_blank" rel="noreferrer" dir="ltr" className="inline-flex items-center gap-1 text-text-accent underline">{shortAddress(tx.hash)}<RiExternalLinkLine className="size-3.5" aria-hidden /></a> : <span dir="ltr">{shortAddress(tx.hash)}</span>}
+                    </Detail>
+                  ))}
                 </dl>
+                {payment.simulated && <p className="flex items-center gap-2 text-caption-1-regular text-text-secondary"><ModeTag />This record isn&apos;t a real transfer.</p>}
                 <section className="flex flex-col gap-3 border-t border-separator-border pt-4">
                   <h3 className="text-body-semibold">Timeline</h3>
                   <Timeline steps={paymentTimeline(payment)} />
@@ -81,23 +88,12 @@ export function PaymentDrawer({ paymentId, onClose }: { paymentId: string | null
             </DrawerBody>
             <DrawerFooter>
               <CopyButton text={payment.id} label="Payment ID">Copy ID</CopyButton>
-              {payment.status === "settled" && <Button variant="secondary" leadingIcon={RiArrowGoBackLine} onClick={() => setRefunding(true)}>Mark refunded</Button>}
+              {payment.status === "settled" && payment.detail?.state === "settled" && <Button variant="secondary" leadingIcon={RiArrowGoBackLine} onClick={() => setRefunding(true)}>Refund</Button>}
             </DrawerFooter>
           </>
         )}
       </Drawer>
-      <AlertDialog
-        isOpen={refunding}
-        onOpenChange={setRefunding}
-        title="Mark this payment as refunded?"
-        description="It leaves your settled volume. No funds move in this demo."
-        confirmLabel="Mark refunded"
-        onConfirm={() => {
-          if (payment) actions.refundPayments([payment.id]);
-          setRefunding(false);
-          toast.success("Payment marked as refunded", { description: SIMULATED });
-        }}
-      />
+      <RefundDialog payment={refunding && payment ? payment : null} onClose={() => setRefunding(false)} />
     </>
   );
 }

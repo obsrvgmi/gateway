@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { RiErrorWarningLine } from "@remixicon/react";
 import { Button } from "@/components/base/buttons/button";
 import { Panel } from "@/components/dashboard/ui";
-import { actions } from "@/lib/store";
 
 export default function DashboardError({ error, retry }: { error: unknown; retry: () => void }) {
   useEffect(() => {
@@ -22,7 +21,6 @@ export default function DashboardError({ error, retry }: { error: unknown; retry
       </div>
       <div className="flex flex-wrap justify-center gap-2">
         <Button onClick={retry}>Try again</Button>
-        <Button variant="secondary" onClick={() => { actions.restoreDemoData(); retry(); }}>Restore demo data</Button>
       </div>
     </Panel>
   );

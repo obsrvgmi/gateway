@@ -16,7 +16,7 @@ export function paymentsCsv(rows: Payment[]) {
   return [header, ...body].join("\n");
 }
 
-/** Every row says so: this file must not pass for a statement of real transfers. */
+/** Test-mode rows say so, so they can't pass for a statement of real transfers. */
 export function payoutsCsv(rows: Payout[]) {
   const header = "id,created_at_utc,status,trigger,amount,asset,receive_amount,receive_asset,usd,fee_usd,destination,reference,simulated";
   const body = rows.map((p) => [p.id, p.createdAt, p.status, p.trigger, p.amount, p.asset, p.receiveAmount, p.receiveAsset, p.usd, p.feeUsd, p.destinationAddress, p.reference, "true"].map(csvCell).join(","));

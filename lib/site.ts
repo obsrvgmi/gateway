@@ -1,3 +1,6 @@
+/** Bump when the Merchant Terms change. Acceptance is stored per workspace with this version. */
+export const TERMS_VERSION = "2026-11-06";
+
 /** Working name and marketing figures. All placeholders until product confirms them. */
 export const SITE = {
   name: "Gateway",

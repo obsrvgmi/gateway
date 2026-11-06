@@ -1,5 +1,6 @@
-import { ASSETS, ROUTE_FEE } from "./assets";
-import type { AssetSymbol, Payment, Payout, PayoutSchedule } from "./types";
+import { isValidAddress } from "./address";
+import { ASSETS, ROUTE_FEE, type AddressKind } from "./assets";
+import type { AssetSymbol, Payment, Payout, PayoutSchedule, Settlement } from "./types";
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
@@ -9,12 +10,16 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const NETWORK_FEE = 0.4;
 
 export const HOLD_OPTIONS = [0, 1, 3, 7];
-export const WALLET_PATTERN = /^(0x[a-fA-F0-9]{40}|[a-z0-9_-]+(\.[a-z0-9_-]+)*\.(near|testnet))$/;
+const ADDRESS_KINDS: AddressKind[] = ["evm", "near", "sol", "btc", "tron"];
+/** Could this hold funds on any chain we support? Whether it fits the chosen asset is checked at payout. */
+export const isWalletAddress = (value: string) => ADDRESS_KINDS.some((kind) => isValidAddress(kind, value));
 
 /**
  * The money model. Payments settle into the merchant's own settlement account; Gateway never holds
  * funds. A payout sweeps that account to a destination wallet. The hold is the merchant's own refund
  * window, not a reserve Gateway takes, so it can be changed at any time.
+ *
+ * For the sample data's fees only. A real payout's fees come from its quote.
  */
 export function payoutFee(asset: AssetSymbol, receiveAsset: AssetSymbol, usd: number) {
   return (asset === receiveAsset ? 0 : usd * ROUTE_FEE) + NETWORK_FEE;
@@ -41,7 +46,7 @@ const label = (time: number) => {
 };
 
 /** Every figure the payouts surfaces show, from one pass over the records. */
-export function ledger(payments: Payment[], payouts: Payout[], holdDays: number, now: number) {
+export function ledger(payments: Payment[], payouts: Payout[], holdDays: number, now: number, settlement?: Settlement, prices: Partial<Record<AssetSymbol, number>> = {}) {
   const cleared = new Map<AssetSymbol, number>();
   const heldByAsset = new Map<AssetSymbol, number>();
   const releases = new Map<number, Release>();
@@ -56,7 +61,7 @@ export function ledger(payments: Payment[], payouts: Payout[], holdDays: number,
       arrivingCount += 1;
     }
     if (payment.status !== "settled") continue;
-    const releaseAt = new Date(payment.createdAt).getTime() + holdDays * DAY;
+    const releaseAt = new Date(payment.detail?.settledAt ?? payment.createdAt).getTime() + holdDays * DAY;
     if (releaseAt > now) {
       heldUsd += payment.usd;
       heldCount += 1;
@@ -73,8 +78,8 @@ export function ledger(payments: Payment[], payouts: Payout[], holdDays: number,
   let sendingUsd = 0;
   let sentCount = 0;
   for (const payout of payouts) {
-    // A failed payout never left, so its funds are still available.
-    if (payout.status === "failed") continue;
+    // A failed or unsigned payout never left, so its funds are still available.
+    if (payout.status === "failed" || payout.status === "expired" || payout.status === "awaiting_signature") continue;
     cleared.set(payout.asset, (cleared.get(payout.asset) ?? 0) - payout.amount);
     if (payout.status === "processing") sendingUsd += payout.usd;
     else {
@@ -83,13 +88,14 @@ export function ledger(payments: Payment[], payouts: Payout[], holdDays: number,
     }
   }
 
-  const toBalance = ([asset, amount]: [AssetSymbol, number]): AssetBalance => ({ asset, amount, usd: amount * ASSETS[asset].usd });
+  const toBalance = ([asset, amount]: [AssetSymbol, number]): AssetBalance => ({ asset, amount, usd: amount * (prices[asset] ?? ASSETS[asset].usd) });
   const balances = [...cleared.entries()].map(toBalance);
-  const available = balances.filter((entry) => entry.usd >= 0.01).sort(byUsd);
+  // The chain is the truth once there's a wallet to read. Records alone can't see a merchant moving funds themselves.
+  const available = settlement?.wallet ? settlement.available.map(({ asset, amount, usd }) => ({ asset, amount, usd })) : balances.filter((entry) => entry.usd >= 0.01).sort(byUsd);
   return {
     available,
     // A refund marked after a payout can take an asset below zero. It can't be paid out, and it doesn't reduce other assets.
-    shortfall: balances.filter((entry) => entry.usd <= -0.01).sort((a, b) => a.usd - b.usd),
+    shortfall: settlement?.wallet ? [] : balances.filter((entry) => entry.usd <= -0.01).sort((a, b) => a.usd - b.usd),
     availableUsd: available.reduce((sum, entry) => sum + entry.usd, 0),
     held: [...heldByAsset.entries()].map(toBalance).sort(byUsd),
     heldUsd,

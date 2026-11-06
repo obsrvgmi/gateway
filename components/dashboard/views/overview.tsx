@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine, RiArrowUpSLine, RiCheckLine, RiCheckboxCircleLine, RiCloseLine, RiErrorWarningLine, RiInformationLine, RiLayoutMasonryLine, RiLinksLine, RiTimeLine } from "@remixicon/react";
 import { Button } from "@/components/base/buttons/button";
 import { Meter } from "@/components/base/meter/meter";
@@ -22,16 +22,15 @@ import type { GatewayState, Payment } from "@/lib/types";
 import { cx } from "@/utils/cx";
 import { assetColor, assetDarkInk, Heatmap, Histogram, LegendKey, RankBars, RouteFlow, SegmentBar, Sparkline, VolumeChart, type VolumeMetric } from "../charts";
 import { formatCompactUsd, formatCount, formatPercent, formatSeconds, plural, relativeTime } from "../fmt";
-import { simulatePayment } from "../live";
 import { preloadPaymentDrawer } from "../preload";
 import { PositionStrip } from "../position-strip";
 import { Bento, DeltaChip, NoData, PageHeader, Panel, PanelLink, PaymentStatusChip, Stat, useWideMain } from "../ui";
 
 const PaymentDrawer = dynamic(() => preloadPaymentDrawer().then((module) => module.PaymentDrawer), { ssr: false });
 
-function setupSteps({ links, widgets, payments, settings }: GatewayState) {
+function setupSteps({ links, widgets, payments, settings, settlement }: GatewayState) {
   return [
-    { label: "Set your payout wallet", done: settings.walletAddress !== "", href: "/dashboard/payouts" },
+    { label: "Connect your settlement wallet", done: settlement.wallet !== null, href: "/dashboard/settings?tab=business" },
     { label: "Create a payment link", done: links.length > 0, href: "/dashboard/links/new" },
     { label: "Build a checkout widget", done: widgets.length > 0, href: "/dashboard/widgets/new" },
     { label: "Take your first payment", done: payments.some((p) => p.status === "settled"), href: "/dashboard/links" },
@@ -86,29 +85,9 @@ function Attention({ items }: { items: AttentionItem[] }) {
 }
 
 function LiveFeed({ payments, now, onOpen }: { payments: Payment[]; now: number; onOpen: (id: string) => void }) {
-  const [live, setLive] = useState(() => !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   // Only payments that arrive after mount animate in. The class has no effect once a row has mounted.
   const [initial] = useState(() => new Set(payments.map((p) => p.id)));
   const recent = payments.slice(0, 12);
-
-  useEffect(() => {
-    if (!live) return;
-    let timer = 0;
-    let runs = 0;
-    const schedule = () => {
-      // Capped so a tab left open doesn't grow the saved demo data forever.
-      if (runs >= 12) return;
-      timer = window.setTimeout(() => {
-        if (document.visibilityState === "visible") {
-          runs += 1;
-          simulatePayment();
-        }
-        schedule();
-      }, 9000 + Math.random() * 9000);
-    };
-    schedule();
-    return () => window.clearTimeout(timer);
-  }, [live]);
 
   const inFlight = payments.filter((p) => p.status === "processing").length;
   return (
@@ -116,7 +95,6 @@ function LiveFeed({ payments, now, onOpen }: { payments: Payment[]; now: number;
       title="Live activity"
       description={inFlight ? `${inFlight} in flight` : "Nothing in flight"}
       className="min-h-[320px] flex-1 gap-3"
-      actions={<Switch size="sm" isSelected={live} onChange={setLive} aria-label="Simulate incoming payments">Simulate</Switch>}
     >
       <div className="relative min-h-0 flex-1">
         <ul className="absolute inset-0 flex flex-col divide-y divide-separator-border overflow-y-auto">

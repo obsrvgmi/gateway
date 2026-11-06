@@ -1,5 +1,4 @@
 import { ASSETS } from "./assets";
-import { DEMO_NOW } from "./seed";
 import type { AssetSymbol, Payment, PaymentStatus } from "./types";
 
 const DAY = 86_400_000;
@@ -20,14 +19,14 @@ const shortDate = (time: number) => {
   return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
 };
 
-/** The dashboard's "now": the demo instant, or the newest payment if one landed after it. */
+/** The dashboard's "now". A payment stamped slightly ahead of this clock still counts as now. */
 export function metricsNow(payments: Payment[]) {
-  return payments.reduce((latest, payment) => Math.max(latest, at(payment)), DEMO_NOW);
+  return payments.reduce((latest, payment) => Math.max(latest, at(payment)), Date.now());
 }
 
-/** Customers pay this on top of the price when the route swaps assets. The merchant receives the full amount. */
+/** What the customer paid above the merchant's amount, from the provider's quote. The merchant receives the full amount. */
 export function routeFee(payment: Payment) {
-  return Math.max(0, payment.payAmount * ASSETS[payment.payAsset].usd - payment.usd);
+  return payment.feeUsd ?? 0;
 }
 
 function percentile(sorted: number[], fraction: number) {
@@ -291,7 +290,7 @@ export function walletTotals(payments: Payment[]) {
 }
 
 export function statusCounts(list: Payment[]) {
-  const counts: Record<PaymentStatus, number> = { settled: 0, processing: 0, refunded: 0, expired: 0 };
+  const counts: Record<PaymentStatus, number> = { settled: 0, processing: 0, refunded: 0, expired: 0, failed: 0 };
   for (const p of list) counts[p.status] += 1;
   return counts;
 }
@@ -321,33 +320,36 @@ export interface TimelineStep {
   state: "done" | "current" | "pending" | "failed";
 }
 
-/** The mock settlement story for a payment, derived from its status and settle time. */
+/** A payment's history, from what the provider actually reported. */
 export function paymentTimeline(payment: Payment): TimelineStep[] {
-  const start = at(payment);
-  const stamp = (seconds: number) => new Date(start + seconds * 1000).toISOString();
-  const seconds = payment.settleSeconds ?? 0;
+  const { detail } = payment;
   const chain = ASSETS[payment.payAsset].chain;
   const opened: TimelineStep = { label: "Checkout opened", detail: `Quote locked for ${payment.payAsset}`, at: payment.createdAt, state: "done" };
+  const detected: TimelineStep = { label: "Funds detected", detail: `Seen on ${chain}`, at: detail?.depositedAt ?? null, state: "done" };
 
-  if (payment.status === "expired") {
-    return [opened, { label: "Quote expired", detail: "The customer did not send funds in time", at: stamp(900), state: "failed" }];
+  if (payment.status === "expired") return [opened, { label: "Quote expired", detail: "No deposit seen yet. If one arrives late, this payment updates", at: null, state: "failed" }];
+  if (payment.status === "failed") {
+    return [
+      opened,
+      ...(detail?.depositedAt ? [detected] : []),
+      { label: detail?.returnedToCustomer ? "Returned to customer" : "Couldn't complete", detail: detail?.failureReason ?? (detail?.returnedToCustomer ? "The route sent the deposit back, less its refund fee" : "The route is still working out where the funds go"), at: null, state: "failed" },
+    ];
   }
   if (payment.status === "processing") {
     return [
       opened,
-      { label: "Funds detected", detail: `Seen on ${chain}`, at: stamp(8), state: "done" },
-      { label: "Routing", detail: `Swapping ${payment.payAsset} to ${payment.receiveAsset}`, at: null, state: "current" },
-      { label: "Settled to wallet", detail: "Waiting on the route", at: null, state: "pending" },
+      detected,
+      { label: "Routing", detail: detail?.state === "incomplete_deposit" ? "The deposit was below the quote. The customer can top up, or the route returns it" : `Swapping ${payment.payAsset} to ${payment.receiveAsset}`, at: null, state: "current" },
+      { label: "Settled", detail: "Waiting on the route", at: null, state: "pending" },
     ];
   }
   const steps: TimelineStep[] = [
     opened,
-    { label: "Funds detected", detail: `Seen on ${chain}`, at: stamp(Math.round(seconds * 0.3)), state: "done" },
-    { label: "Routed", detail: payment.payAsset === payment.receiveAsset ? "No swap needed" : `Swapped ${payment.payAsset} to ${payment.receiveAsset}`, at: stamp(Math.round(seconds * 0.75)), state: "done" },
-    { label: "Settled to wallet", detail: `${seconds} seconds end to end`, at: stamp(seconds), state: "done" },
+    detected,
+    { label: "Routed", detail: payment.payAsset === payment.receiveAsset ? "No swap needed" : `Swapped ${payment.payAsset} to ${payment.receiveAsset}`, at: null, state: "done" },
+    { label: "Settled", detail: payment.settleSeconds === null ? "Funds received" : `${payment.settleSeconds} seconds from deposit`, at: detail?.settledAt ?? null, state: "done" },
   ];
-  if (payment.status === "refunded") {
-    steps.push({ label: "Refunded", detail: "Returned to the payer", at: payment.refundedAt ?? null, state: "failed" });
-  }
+  if (detail?.refundState === "pending") steps.push({ label: "Refunding", detail: "On its way back to the customer", at: null, state: "current" });
+  if (payment.status === "refunded") steps.push({ label: "Refunded", detail: "Returned to the customer", at: payment.refundedAt ?? null, state: "failed" });
   return steps;
 }

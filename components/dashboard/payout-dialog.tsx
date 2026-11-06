@@ -1,25 +1,38 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Radio as AriaRadio, RadioGroup as AriaRadioGroup } from "react-aria-components";
-import { RiCheckLine, RiInformationLine } from "@remixicon/react";
+import { RiCheckLine, RiInformationLine, RiShieldCheckLine } from "@remixicon/react";
 import { Button } from "@/components/base/buttons/button";
 import { Label } from "@/components/base/input/label";
 import { Modal, ModalBody, ModalFooter, ModalHeader } from "@/components/base/modal/modal";
 import { NumberField } from "@/components/base/number-field/number-field";
 import { Select, SelectItem } from "@/components/base/select/select";
 import { Spinner } from "@/components/base/spinner/spinner";
+import { toast } from "@/components/base/toast/toast";
 import { Rosette } from "@/components/brand/rosette";
 import { TokenMark } from "@/components/brand/token-mark";
+import { api, errorMessage } from "@/lib/api";
 import { ASSETS } from "@/lib/assets";
 import { formatToken, formatUsd, shortAddress } from "@/lib/format";
-import { metricsNow } from "@/lib/metrics";
-import { ledger, payoutFee } from "@/lib/payouts";
-import { actions, newId, useGateway } from "@/lib/store";
+import { baseToDecimal, decimalToBase } from "@/lib/money";
+import { signTransfer, type PreparedTransfer } from "@/lib/sign-intent";
+import { refresh, useGateway } from "@/lib/store";
 import type { AssetSymbol, Payout } from "@/lib/types";
 import { cx } from "@/utils/cx";
 import { AssetSelect } from "./asset-select";
-import { PAYOUT_STEPS, runPayout, watchPayout } from "./payout-sim";
+import { PayoutStatusChip } from "./ui";
+
+interface PreparedPayout extends PreparedTransfer {
+  id: string;
+  asset: AssetSymbol;
+  receiveAsset: AssetSymbol;
+  receiveBase: string;
+  minReceiveBase: string;
+  destinationLabel: string;
+  destinationAddress: string;
+  signExpiresAt: string;
+}
 
 function Row({ label, children, strong = false }: { label: string; children: ReactNode; strong?: boolean }) {
   return (
@@ -30,13 +43,19 @@ function Row({ label, children, strong = false }: { label: string; children: Rea
   );
 }
 
-function Sending({ step, payout, onClose }: { step: number; payout: Payout; onClose: () => void }) {
-  const done = step >= PAYOUT_STEPS.length;
+const inUnits = (base: string, asset: AssetSymbol) => baseToDecimal(base, ASSETS[asset].tokenDecimals);
+
+/** Follows the store, so the outcome appears when the provider reports it, not on a timer. */
+function Sending({ payoutId, onClose }: { payoutId: string; onClose: () => void }) {
+  const { payouts } = useGateway();
+  const payout: Payout | undefined = payouts.find((item) => item.id === payoutId);
+  const done = payout?.status === "sent";
+  const failed = payout?.status === "failed";
   return (
     <>
-      <ModalHeader title={done ? "Payout sent" : "Sending payout"} description={done ? "Simulated. No funds moved." : `${formatToken(payout.amount, payout.asset)} to ${payout.destinationLabel}`} />
+      <ModalHeader title={done ? "Payout sent" : failed ? "Payout failed" : "Sending payout"} description={done ? undefined : failed ? "The funds stayed in your settlement account." : "You can close this. It keeps going, and you'll get a notification."} />
       <ModalBody className="flex flex-col gap-4 pb-1">
-        {done ? (
+        {done && payout ? (
           <div role="status" className="flex items-center gap-4">
             <span className="relative flex size-14 shrink-0 items-center justify-center text-text-accent motion-safe:animate-[seal-in_700ms_cubic-bezier(0.16,1,0.3,1)_both]">
               <Rosette className="absolute inset-0" rings={4} petals={12} strokeWidth={0.6} />
@@ -47,95 +66,116 @@ function Sending({ step, payout, onClose }: { step: number; payout: Payout; onCl
               <p className="truncate text-body-regular text-text-secondary">{payout.destinationLabel}, <span dir="ltr">{shortAddress(payout.destinationAddress)}</span></p>
             </div>
           </div>
+        ) : failed ? (
+          <p className="rounded-xl bg-status-rose-background p-3 text-body-regular text-status-rose-text">{payout?.failureReason}</p>
         ) : (
-          <ol className="flex flex-col" aria-live="polite">
-            {PAYOUT_STEPS.map((item, index) => (
-              <li key={item.label} className={cx("flex items-center gap-3 py-1 text-body-medium", index > step && "text-text-tertiary")}>
-                <span className="flex size-6 shrink-0 items-center justify-center">
-                  {index < step ? <RiCheckLine className="size-5 text-text-accent" aria-hidden /> : index === step ? <Spinner size="sm" className="text-text-accent" /> : <span className="size-2 rounded-full bg-background-tertiary-default" />}
-                </span>
-                {item.label}
-              </li>
-            ))}
-          </ol>
+          <div role="status" className="flex items-center gap-3 text-body-medium"><Spinner size="sm" className="text-text-accent" />Routing through NEAR Intents {payout && <PayoutStatusChip status={payout.status} />}</div>
         )}
       </ModalBody>
+      <ModalFooter><Button onClick={onClose} variant={done || failed ? "primary" : "secondary"}>{done || failed ? "Done" : "Hide, keep sending"}</Button></ModalFooter>
+    </>
+  );
+}
+
+/** The merchant checks the real quote here, and only their wallet can send it. */
+function Review({ prepared, onBack, onSent, onClose }: { prepared: PreparedPayout; onBack: () => void; onSent: (id: string) => void; onClose: () => void }) {
+  const { mode } = useGateway();
+  const [busy, setBusy] = useState(false);
+  const sign = async () => {
+    setBusy(true);
+    try {
+      const signature = await signTransfer(prepared, { recipient: prepared.destinationAddress, mode });
+      await api(`/api/payouts/${prepared.id}/sign`, { body: { signature } });
+      await refresh();
+      onSent(prepared.id);
+    } catch (error) {
+      toast.error("Payout not sent", { description: errorMessage(error) });
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <ModalHeader title="Check and sign" description="Your wallet signs this. Gateway can't send it without you." />
+      <ModalBody className="flex flex-col gap-4 pb-1">
+        <dl className="dash-well flex flex-col gap-1.5 rounded-xl p-3">
+          <Row label="Leaves your balance">{inUnits(prepared.amountBase, prepared.asset)} {prepared.asset}</Row>
+          <Row label="To">{prepared.destinationLabel}</Row>
+          <Row label="Address"><span dir="ltr">{prepared.destinationAddress}</span></Row>
+          <Row label="Network">{ASSETS[prepared.receiveAsset].chain}</Row>
+          <Row label="Destination receives about" strong>{inUnits(prepared.receiveBase, prepared.receiveAsset)} {prepared.receiveAsset}</Row>
+          <Row label="At least">{inUnits(prepared.minReceiveBase, prepared.receiveAsset)} {prepared.receiveAsset}</Row>
+        </dl>
+        <p className="flex items-start gap-1.5 text-caption-1-regular text-text-secondary">
+          <RiShieldCheckLine className="mt-px size-4 shrink-0" aria-hidden />
+          Your wallet shows a transfer to a one-time routing address, not this destination. This browser has checked the route&apos;s signature proves that address pays the destination above.
+        </p>
+      </ModalBody>
       <ModalFooter>
-        <Button onClick={onClose} variant={done ? "primary" : "secondary"}>{done ? "Done" : "Hide, keep sending"}</Button>
+        <Button variant="secondary" disabled={busy} onClick={onBack}>Back</Button>
+        <Button variant="ghost" disabled={busy} onClick={onClose}>Cancel</Button>
+        <Button disabled={busy} onClick={() => void sign()}>{busy ? "Waiting for wallet" : "Sign in wallet"}</Button>
       </ModalFooter>
     </>
   );
 }
 
 function Form({ onClose }: { onClose: () => void }) {
-  const { payments, payouts, settings } = useGateway();
-  const { destinations, defaultDestinationId, holdDays } = settings.payouts;
-  const position = useMemo(() => ledger(payments, payouts, holdDays, metricsNow(payments)), [payments, payouts, holdDays]);
-  const [asset, setAsset] = useState<AssetSymbol | undefined>(position.available[0]?.asset);
-  const balance = position.available.find((entry) => entry.asset === asset);
+  const { settings, settlement, mode } = useGateway();
+  const { destinations, defaultDestinationId } = settings.payouts;
+  const available = settlement.available;
+  const [asset, setAsset] = useState<AssetSymbol | undefined>(available[0]?.asset);
+  const balance = useMemo(() => available.find((entry) => entry.asset === asset), [available, asset]);
   const [amount, setAmount] = useState(balance?.amount ?? 0);
+  const [useMax, setUseMax] = useState(true);
   const [receiveAsset, setReceiveAsset] = useState<AssetSymbol>(asset ?? settings.receiveAsset);
   const [destinationId, setDestinationId] = useState(defaultDestinationId);
-  const [sent, setSent] = useState<Payout | null>(null);
-  const [step, setStep] = useState(0);
+  const [prepared, setPrepared] = useState<PreparedPayout | null>(null);
+  const [sentId, setSentId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => () => watchPayout(null), []);
-
-  useEffect(() => {
-    if (!sent || step >= PAYOUT_STEPS.length) return;
-    const timer = window.setTimeout(() => setStep(step + 1), PAYOUT_STEPS[step].ms);
-    return () => window.clearTimeout(timer);
-  }, [sent, step]);
-
-  if (sent) return <Sending step={step} payout={sent} onClose={onClose} />;
+  if (sentId) return <Sending payoutId={sentId} onClose={onClose} />;
+  if (prepared) return <Review prepared={prepared} onBack={() => setPrepared(null)} onSent={setSentId} onClose={onClose} />;
+  if (!settlement.wallet) {
+    return (
+      <>
+        <ModalHeader title="Connect your settlement wallet" description="Only your own wallet can move your funds, so payouts need it connected. Do this in Settings." />
+        <ModalFooter><Button onClick={onClose}>Close</Button></ModalFooter>
+      </>
+    );
+  }
   if (!balance || !asset) {
     return (
       <>
-        <ModalHeader title="Nothing to pay out yet" description="Funds become available once they clear your refund window." />
+        <ModalHeader title="Nothing to pay out yet" description={settlement.balancesFresh ? "Funds become available once they clear your refund window." : "We couldn't read your balance just now. Try again in a moment."} />
         <ModalFooter><Button onClick={onClose}>Close</Button></ModalFooter>
       </>
     );
   }
 
-  const price = ASSETS[asset].usd;
-  const usd = (Number.isFinite(amount) ? amount : 0) * price;
-  const fee = payoutFee(asset, receiveAsset, usd);
-  const receiveAmount = Math.max(0, (usd - fee) / ASSETS[receiveAsset].usd);
+  const tokenDecimals = ASSETS[asset].tokenDecimals;
+  /** Max uses the exact balance. A typed number goes through a string, so a float can't round it upward. */
+  const amountBase = useMax ? balance.base : Number.isFinite(amount) && amount > 0 ? decimalToBase(amount.toFixed(Math.min(tokenDecimals, 8)), tokenDecimals).toString() : "0";
+  const over = BigInt(amountBase) > BigInt(balance.base);
+  const empty = amountBase === "0";
   const destination = destinations.find((item) => item.id === destinationId) ?? destinations[0];
-  const over = amount > balance.amount + 1e-9;
-  const tooSmall = usd <= fee;
-  const invalid = over || tooSmall;
 
   const pick = (next: AssetSymbol) => {
     setAsset(next);
     setReceiveAsset(next);
-    setAmount(position.available.find((entry) => entry.asset === next)?.amount ?? 0);
+    setAmount(available.find((entry) => entry.asset === next)?.amount ?? 0);
+    setUseMax(true);
   };
 
-  const send = () => {
-    if (invalid || !destination) return;
-    const payout: Payout = {
-      id: newId("pyt_"),
-      asset,
-      amount,
-      receiveAsset,
-      receiveAmount,
-      usd,
-      feeUsd: fee,
-      destinationId: destination.id,
-      destinationLabel: destination.label,
-      destinationAddress: destination.address,
-      status: "processing",
-      trigger: "manual",
-      paymentCount: 0,
-      reference: newId("sim_", 12),
-      createdAt: new Date().toISOString(),
-      completedAt: null,
-    };
-    actions.addPayout(payout);
-    watchPayout(payout.id);
-    runPayout(payout.id);
-    setSent(payout);
+  const prepare = async () => {
+    if (over || empty || !destination) return;
+    setBusy(true);
+    try {
+      setPrepared(await api<PreparedPayout>("/api/payouts", { body: { asset, amountBase, receiveAsset, destinationId: destination.id } }));
+    } catch (error) {
+      toast.error("Couldn't prepare this payout", { description: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -144,7 +184,7 @@ function Form({ onClose }: { onClose: () => void }) {
       <ModalBody className="flex flex-col gap-4 pb-1">
         <AriaRadioGroup aria-label="Asset to pay out" value={asset} onChange={(value) => pick(value as AssetSymbol)} className="flex flex-col gap-1.5">
           <Label>From your balance</Label>
-          {position.available.map((entry) => (
+          {available.map((entry) => (
             <AriaRadio key={entry.asset} value={entry.asset} className={({ isSelected, isFocusVisible }) => cx("flex cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-2 outline-none transition-[background-color,box-shadow] duration-150", isSelected ? "bg-background-secondary-default shadow-[inset_0_0_0_1.5px_var(--viz-primary)]" : "shadow-[inset_0_0_0_1px_var(--color-border-button-default)] hover:bg-background-secondary-default", isFocusVisible && "ring-2 ring-border-focus-ring")}>
               <TokenMark symbol={entry.asset} size="sm" />
               <span className="min-w-0 flex-1 truncate text-body-medium tabular-nums">{formatToken(entry.amount, entry.asset)}</span>
@@ -155,11 +195,10 @@ function Form({ onClose }: { onClose: () => void }) {
 
         <div className="flex flex-col gap-1.5">
           <div className="flex items-end gap-2">
-            <NumberField label={`Amount in ${asset}`} className="min-w-0 flex-1" value={amount} onChange={setAmount} minValue={0} isInvalid={invalid} formatOptions={{ maximumFractionDigits: ASSETS[asset].decimals }} />
-            <Button variant="secondary" onClick={() => setAmount(balance.amount)} className="h-10">Max</Button>
+            <NumberField label={`Amount in ${asset}`} className="min-w-0 flex-1" value={amount} onChange={(value) => { setAmount(value); setUseMax(false); }} minValue={0} isInvalid={over} formatOptions={{ maximumFractionDigits: Math.min(tokenDecimals, 8) }} />
+            <Button variant="secondary" onClick={() => { setAmount(balance.amount); setUseMax(true); }} className="h-10">Max</Button>
           </div>
           {over && <p className="text-caption-1-regular text-text-error-primary">That&apos;s more than the {formatToken(balance.amount, asset)} available.</p>}
-          {!over && tooSmall && <p className="text-caption-1-regular text-text-error-primary">Enter more than the {formatUsd(fee)} in fees.</p>}
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -169,20 +208,14 @@ function Form({ onClose }: { onClose: () => void }) {
           </Select>
         </div>
 
-        <dl className="dash-well flex flex-col gap-1.5 rounded-xl p-3">
-          <Row label="Leaves your balance">{formatToken(amount || 0, asset)}</Row>
-          <Row label="Fees">{asset === receiveAsset ? formatUsd(fee) : `${formatUsd(fee)}, includes swap`}</Row>
-          <Row label="To"><span dir="ltr">{destination ? shortAddress(destination.address) : "No destination"}</span></Row>
-          <Row label="Destination receives" strong>{formatToken(receiveAmount, receiveAsset)}</Row>
-        </dl>
         <p className="flex items-start gap-1.5 text-caption-1-regular text-text-secondary">
           <RiInformationLine className="mt-px size-4 shrink-0" aria-hidden />
-          This is a demo. Your balance and history update, but no funds move and nothing reaches a wallet.
+          {mode === "live" ? "Next you'll see the live price and fees, then sign with your settlement wallet." : "Test mode. Next you'll see a test price, then sign with your wallet. No funds move."}
         </p>
       </ModalBody>
       <ModalFooter>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button disabled={invalid || !destination} onClick={send}>Send payout</Button>
+        <Button disabled={over || empty || !destination || busy} onClick={() => void prepare()}>{busy ? "Getting a price" : "Continue"}</Button>
       </ModalFooter>
     </>
   );
