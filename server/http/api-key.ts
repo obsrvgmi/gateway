@@ -6,7 +6,7 @@ import { db, schema } from "../db";
 import { hashSecret } from "../ids";
 import { conflict, HttpError, unauthorized } from "./errors";
 import { rateLimit } from "./rate-limit";
-import { json, publicRoute } from "./route";
+import { json, publicRoute, readBody } from "./route";
 
 export interface KeyContext {
   orgId: string;
@@ -41,8 +41,7 @@ export function apiRoute(handler: (request: NextRequest, context: KeyContext) =>
  */
 export function idempotentApiRoute(handler: (request: NextRequest, context: KeyContext, body: unknown) => Promise<{ status: number; body: unknown }>) {
   return apiRoute(async (request, context) => {
-    const raw = await request.text();
-    if (raw.length > 256 * 1024) throw new HttpError(400, "bad_request", "Request is too large.");
+    const raw = await readBody(request);
     let body: unknown;
     try {
       body = raw ? JSON.parse(raw) : {};

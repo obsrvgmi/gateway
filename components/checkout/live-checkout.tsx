@@ -78,6 +78,7 @@ interface Session {
   payBy: string | null;
   deadline: string | null;
   refundAddress: string;
+  depositSubmitted: boolean;
   deposited: string | null;
   returned: string | null;
   returnReason: string | null;
@@ -326,7 +327,9 @@ function Choose({ source, onSession }: { source: PublicSource; onSession: (sessi
 function Deposit({ session, source, onStartOver }: { session: Session; source: PublicSource; onStartOver: () => void }) {
   const asset = ASSETS[session.payAsset];
   const countdown = useCountdown(session.payBy);
-  const [sent, setSent] = useState(false);
+  // From the server, so a reload or another device can't offer a second send.
+  const [sentHere, setSent] = useState(false);
+  const sent = sentHere || session.depositSubmitted;
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmRestart, setConfirmRestart] = useState(false);
@@ -474,14 +477,22 @@ function Receipt({ session, source }: { session: Session; source: PublicSource }
 
 function Stopped({ session, source, onStartOver }: { session: Session; source: PublicSource; onStartOver: () => void }) {
   const returned = session.state === "provider_refunded";
+  const [confirm, setConfirm] = useState(false);
   return (
     <div className="flex flex-col gap-3" role="alert">
-      <p className="flex items-start gap-2 text-body-medium"><RiErrorWarningLine className="mt-0.5 size-5 shrink-0 text-status-rose-text" aria-hidden />{returned ? "This payment was returned to your wallet" : "This payment didn't complete"}</p>
+      <p className="flex items-start gap-2 text-body-medium"><RiErrorWarningLine className="mt-0.5 size-5 shrink-0 text-status-rose-text" aria-hidden />{returned ? "This payment was returned to your wallet" : session.state === "underpaid" ? "This payment arrived short" : "This payment didn't complete"}</p>
       <p className="text-body-regular text-text-secondary [overflow-wrap:anywhere]">
-        {returned ? `${session.returned ?? "Your deposit"} ${session.payAsset} went back to ${session.refundAddress}, less network fees. ${source.merchant} wasn't paid.` : `We're confirming where your funds are. If you sent them, they're being returned to ${session.refundAddress}. Please contact ${source.supportEmail || "the merchant"} with the reference below if they don't arrive.`}
+        {returned ? `${session.returned ?? "Your deposit"} ${session.payAsset} went back to ${session.refundAddress}, less network fees. ${source.merchant} wasn't paid.` : session.state === "underpaid" ? `The route delivered less than it quoted, and ${source.merchant} has been told. Please contact ${source.supportEmail || "the merchant"} with the reference below.` : `We're confirming where your funds are. If you sent them, they're being returned to ${session.refundAddress}. Please contact ${source.supportEmail || "the merchant"} with the reference below if they don't arrive.`}
       </p>
       <p dir="ltr" className="text-caption-1-medium text-text-secondary">{session.id}</p>
-      <Button variant="secondary" className="h-11 w-full rounded-xl" onClick={onStartOver}>Start a new payment</Button>
+      {returned || confirm ? (
+        <>
+          {!returned && <p className="text-body-regular">This payment could still complete. If it does, paying again means paying twice.</p>}
+          <Button className="h-11 w-full rounded-xl" onClick={onStartOver}>{returned ? "Start a new payment" : "I understand, start a new payment"}</Button>
+        </>
+      ) : (
+        <Button variant="secondary" className="h-11 w-full rounded-xl" onClick={() => setConfirm(true)}>Start a new payment</Button>
+      )}
     </div>
   );
 }
@@ -510,11 +521,20 @@ export function LiveCheckout({ sourceId }: { sourceId: string }) {
   useEffect(() => {
     api<PublicSource>(`/api/checkout/${sourceId}/source`).then(setSource).catch((failure: unknown) => setLoadError(errorMessage(failure)));
     const saved = recall(sourceId);
-    (saved ? api<Session>(`/api/checkout/sessions/${saved}`).then(setSession).catch(() => remember(sourceId, null)) : Promise.resolve()).finally(() => setResumed(true));
+    (saved
+      ? api<Session>(`/api/checkout/sessions/${saved}`)
+          .then(setSession)
+          .catch((failure: unknown) => {
+            // Only a real "no such payment" forgets it. An outage must not make money on its way look unpaid.
+            if (failure instanceof ApiError && failure.status === 404) remember(sourceId, null);
+            else setLoadError("We couldn't check on your payment just now. Please reload this page. Don't pay again.");
+          })
+      : Promise.resolve()
+    ).finally(() => setResumed(true));
   }, [sourceId]);
 
   useEffect(() => {
-    if (!session || ["settled", "refunded", "provider_refunded", "refund_pending"].includes(session.state)) return;
+    if (!session || ["settled", "underpaid", "refunded", "provider_refunded", "refund_pending"].includes(session.state)) return;
     const timer = window.setInterval(() => {
       api<Session>(`/api/checkout/sessions/${session.id}`).then(setSession).catch(() => undefined);
     }, POLL_MS);
@@ -555,7 +575,7 @@ export function LiveCheckout({ sourceId }: { sourceId: string }) {
   let body: ReactNode;
   if (session) {
     if (session.state === "settled" || session.state === "refund_pending" || session.state === "refunded") body = <Receipt session={session} source={source} />;
-    else if (session.state === "provider_refunded" || session.state === "failed") body = <Stopped session={session} source={source} onStartOver={startOver} />;
+    else if (session.state === "provider_refunded" || session.state === "failed" || session.state === "underpaid") body = <Stopped session={session} source={source} onStartOver={startOver} />;
     else if (session.state === "expired") body = <Late session={session} onStartOver={startOver} />;
     else if (SEEN.has(session.state)) body = <Progress session={session} />;
     else body = <Deposit session={session} source={source} onStartOver={startOver} />;

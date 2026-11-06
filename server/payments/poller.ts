@@ -7,7 +7,7 @@ import { emit } from "../outbox";
 import { provider } from "./provider";
 import { ProviderRejected, ProviderUnavailable, type StatusResponse } from "./provider/types";
 import { paymentEventBody } from "./serialize";
-import { isFinalForProvider, MAX_POLL_FAILURES, nextPaymentState, nextPollDelayMs, shouldExpire, webhookEventFor, type PaymentState } from "./state-machine";
+import { isFinalForProvider, nextPaymentState, nextPollDelayMs, shouldExpire, webhookEventFor, type PaymentState } from "./state-machine";
 
 type PaymentRow = typeof schema.payments.$inferSelect;
 
@@ -44,19 +44,27 @@ export async function applyPaymentStatus(paymentId: string, status: StatusRespon
     if (next === "deposit_seen" || next === "processing" || next === "incomplete_deposit" || next === "settled") {
       patch.depositSeenAt = row.depositSeenAt ?? now;
     }
-    if (next === "settled") {
+    // "Success" with no amount says nothing about what arrived, so it isn't settled yet. A person is told if it lasts.
+    if (next === "settled" && !swapDetails.amountOut) {
+      log("error", "provider reported success with no amount", { paymentId });
+      next = null;
+    }
+    if (next === "settled" && BigInt(swapDetails.amountOut as string) < BigInt(row.receiveBase)) {
+      // A merchant must never be told they were paid in full when they weren't.
+      log("error", "payment settled below the quoted amount", { paymentId, expected: row.receiveBase, got: swapDetails.amountOut });
+      await audit(tx, { orgId: row.orgId, actorType: "system", action: "payment.short_settlement", target: paymentId, detail: { expected: row.receiveBase, got: swapDetails.amountOut } });
+      await emit(tx, row.orgId, "alert.short_settlement", { id: row.id, expected: row.receiveBase, got: swapDetails.amountOut, asset: row.receiveAsset });
+      next = "underpaid";
+      patch.failureReason = "The route delivered less than it quoted. Contact support with this payment's id.";
+    }
+    if (next === "settled" || next === "underpaid") {
       patch.settledAt = now;
-      const seen = (patch.depositSeenAt ?? now).getTime();
+      const seen = (patch.depositSeenAt ?? row.depositSeenAt ?? now).getTime();
       patch.settleSeconds = Math.max(1, Math.round((now.getTime() - seen) / 1000));
-      if (swapDetails.amountOut) {
-        patch.receivedBase = swapDetails.amountOut;
-        // EXACT_OUTPUT promises the amount. Report a shortfall loudly and record what really arrived.
-        if (BigInt(swapDetails.amountOut) < BigInt(row.receiveBase)) {
-          log("error", "payment settled below the quoted amount", { paymentId, expected: row.receiveBase, got: swapDetails.amountOut });
-          await audit(tx, { orgId: row.orgId, actorType: "system", action: "payment.short_settlement", target: paymentId, detail: { expected: row.receiveBase, got: swapDetails.amountOut } });
-        }
-      } else {
-        patch.receivedBase = row.receiveBase;
+      patch.receivedBase = swapDetails.amountOut as string;
+      if (next === "settled" && row.recipientType === "INTENTS") {
+        const [org] = await tx.select({ wallet: schema.organizations.walletAddress }).from(schema.organizations).where(eq(schema.organizations.id, row.orgId)).limit(1);
+        if (org?.wallet !== row.recipient) await emit(tx, row.orgId, "alert.previous_wallet", { id: row.id, wallet: row.recipient });
       }
     }
     if (next === "provider_refunded") {
@@ -88,8 +96,7 @@ async function recordFailure(paymentId: string, error: unknown, now = new Date()
   const delay = nextPollDelayMs({ state: row.state as PaymentState, now: now.getTime(), createdAt: row.createdAt.getTime(), deadline: row.deadline?.getTime() ?? null, failures });
   // A provider error says nothing about the money, so only the polling schedule changes.
   await db().update(schema.payments).set({ pollFailures: failures, nextPollAt: delay === null ? null : new Date(now.getTime() + delay) }).where(eq(schema.payments.id, paymentId));
-  if (failures >= 5) log("error", "status polling keeps failing", { paymentId, failures, error });
-  if (failures === MAX_POLL_FAILURES) await audit(db(), { orgId: row.orgId, actorType: "system", action: "payment.polling_stopped", target: paymentId, detail: { failures } });
+  if (failures === 5 || failures % 20 === 0) log("error", "status polling keeps failing", { paymentId, failures, error });
 }
 
 /**

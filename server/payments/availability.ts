@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { ASSETS, ASSET_SYMBOLS } from "@/lib/assets";
 import type { AssetAmount, AssetSymbol, Settlement } from "@/lib/types";
 import { db, schema, type Db } from "../db";
@@ -9,9 +9,8 @@ import { provider } from "./provider";
 import { prices } from "./tokens";
 
 const DAY = 86_400_000;
-/** Rows that have left, or may be leaving, and aren't yet off the books as completed. */
-const IN_FLIGHT_PAYOUT = ["submitting", "processing"];
-const IN_FLIGHT_REFUND = ["submitting", "processing"];
+/** Rows that have left, or may be leaving. A `failed` still being watched counts: FAILED isn't REFUNDED, and it may yet go through. */
+const IN_FLIGHT = ["submitting", "processing"];
 
 type Org = typeof schema.organizations.$inferSelect;
 type Amounts = Map<AssetSymbol, bigint>;
@@ -38,8 +37,8 @@ export async function heldAmounts(org: Org, now = Date.now(), database: Db = db(
 
 export async function inFlightAmounts(orgId: string, database: Db = db()): Promise<Amounts> {
   const out: Amounts = new Map();
-  const payouts = await database.select({ asset: schema.payouts.asset, amount: schema.payouts.amountBase }).from(schema.payouts).where(and(eq(schema.payouts.orgId, orgId), inArray(schema.payouts.state, IN_FLIGHT_PAYOUT)));
-  const refunds = await database.select({ asset: schema.refunds.asset, amount: schema.refunds.amountBase, kind: schema.refunds.kind }).from(schema.refunds).where(and(eq(schema.refunds.orgId, orgId), inArray(schema.refunds.state, IN_FLIGHT_REFUND)));
+  const payouts = await database.select({ asset: schema.payouts.asset, amount: schema.payouts.amountBase }).from(schema.payouts).where(and(eq(schema.payouts.orgId, orgId), or(inArray(schema.payouts.state, IN_FLIGHT), and(eq(schema.payouts.state, "failed"), isNotNull(schema.payouts.nextPollAt)))));
+  const refunds = await database.select({ asset: schema.refunds.asset, amount: schema.refunds.amountBase, kind: schema.refunds.kind }).from(schema.refunds).where(and(eq(schema.refunds.orgId, orgId), or(inArray(schema.refunds.state, IN_FLIGHT), and(eq(schema.refunds.state, "failed"), isNotNull(schema.refunds.nextPollAt)))));
   for (const row of payouts) add(out, row.asset as AssetSymbol, BigInt(row.amount));
   for (const row of refunds) if (row.kind === "intent") add(out, row.asset as AssetSymbol, BigInt(row.amount));
   return out;

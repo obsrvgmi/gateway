@@ -16,7 +16,7 @@ import { api, errorMessage } from "@/lib/api";
 import { ASSETS } from "@/lib/assets";
 import { formatToken, formatUsd, shortAddress } from "@/lib/format";
 import { baseToDecimal, decimalToBase } from "@/lib/money";
-import { signTransfer, type PreparedTransfer } from "@/lib/sign-intent";
+import { signTransfer, type ExpectedMove, type PreparedTransfer } from "@/lib/sign-intent";
 import { refresh, useGateway } from "@/lib/store";
 import type { AssetSymbol, Payout } from "@/lib/types";
 import { cx } from "@/utils/cx";
@@ -25,13 +25,6 @@ import { PayoutStatusChip } from "./ui";
 
 interface PreparedPayout extends PreparedTransfer {
   id: string;
-  asset: AssetSymbol;
-  receiveAsset: AssetSymbol;
-  receiveBase: string;
-  minReceiveBase: string;
-  destinationLabel: string;
-  destinationAddress: string;
-  signExpiresAt: string;
 }
 
 function Row({ label, children, strong = false }: { label: string; children: ReactNode; strong?: boolean }) {
@@ -78,13 +71,14 @@ function Sending({ payoutId, onClose }: { payoutId: string; onClose: () => void 
 }
 
 /** The merchant checks the real quote here, and only their wallet can send it. */
-function Review({ prepared, onBack, onSent, onClose }: { prepared: PreparedPayout; onBack: () => void; onSent: (id: string) => void; onClose: () => void }) {
-  const { mode } = useGateway();
+function Review({ prepared, expected, label, onBack, onSent, onClose }: { prepared: PreparedPayout; expected: ExpectedMove; label: string; onBack: () => void; onSent: (id: string) => void; onClose: () => void }) {
   const [busy, setBusy] = useState(false);
+  // From the signed quote and the merchant's own choices, not from the server's summary of them.
+  const { amountOut, minAmountOut } = (prepared.quote as { quote: { amountOut: string; minAmountOut: string } }).quote;
   const sign = async () => {
     setBusy(true);
     try {
-      const signature = await signTransfer(prepared, { recipient: prepared.destinationAddress, mode });
+      const signature = await signTransfer(prepared, expected);
       await api(`/api/payouts/${prepared.id}/sign`, { body: { signature } });
       await refresh();
       onSent(prepared.id);
@@ -98,12 +92,12 @@ function Review({ prepared, onBack, onSent, onClose }: { prepared: PreparedPayou
       <ModalHeader title="Check and sign" description="Your wallet signs this. Gateway can't send it without you." />
       <ModalBody className="flex flex-col gap-4 pb-1">
         <dl className="dash-well flex flex-col gap-1.5 rounded-xl p-3">
-          <Row label="Leaves your balance">{inUnits(prepared.amountBase, prepared.asset)} {prepared.asset}</Row>
-          <Row label="To">{prepared.destinationLabel}</Row>
-          <Row label="Address"><span dir="ltr">{prepared.destinationAddress}</span></Row>
-          <Row label="Network">{ASSETS[prepared.receiveAsset].chain}</Row>
-          <Row label="Destination receives about" strong>{inUnits(prepared.receiveBase, prepared.receiveAsset)} {prepared.receiveAsset}</Row>
-          <Row label="At least">{inUnits(prepared.minReceiveBase, prepared.receiveAsset)} {prepared.receiveAsset}</Row>
+          <Row label="Leaves your balance">{inUnits(expected.amountBase, expected.asset)} {expected.asset}</Row>
+          <Row label="To">{label}</Row>
+          <Row label="Address"><span dir="ltr">{expected.recipient}</span></Row>
+          <Row label="Network">{ASSETS[expected.receiveAsset].chain}</Row>
+          <Row label="Destination receives about" strong>{inUnits(amountOut, expected.receiveAsset)} {expected.receiveAsset}</Row>
+          <Row label="At least">{inUnits(minAmountOut, expected.receiveAsset)} {expected.receiveAsset}</Row>
         </dl>
         <p className="flex items-start gap-1.5 text-caption-1-regular text-text-secondary">
           <RiShieldCheckLine className="mt-px size-4 shrink-0" aria-hidden />
@@ -130,11 +124,12 @@ function Form({ onClose }: { onClose: () => void }) {
   const [receiveAsset, setReceiveAsset] = useState<AssetSymbol>(asset ?? settings.receiveAsset);
   const [destinationId, setDestinationId] = useState(defaultDestinationId);
   const [prepared, setPrepared] = useState<PreparedPayout | null>(null);
+  const [chosen, setChosen] = useState<{ expected: ExpectedMove; label: string } | null>(null);
   const [sentId, setSentId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   if (sentId) return <Sending payoutId={sentId} onClose={onClose} />;
-  if (prepared) return <Review prepared={prepared} onBack={() => setPrepared(null)} onSent={setSentId} onClose={onClose} />;
+  if (prepared && chosen) return <Review prepared={prepared} expected={chosen.expected} label={chosen.label} onBack={() => setPrepared(null)} onSent={setSentId} onClose={onClose} />;
   if (!settlement.wallet) {
     return (
       <>
@@ -167,9 +162,11 @@ function Form({ onClose }: { onClose: () => void }) {
   };
 
   const prepare = async () => {
-    if (over || empty || !destination) return;
+    if (over || empty || !destination || !settlement.wallet) return;
     setBusy(true);
     try {
+      // Fixed now, before anything comes back from the server.
+      setChosen({ label: destination.label, expected: { signer: settlement.wallet, recipient: destination.address, asset, receiveAsset, amountBase } });
       setPrepared(await api<PreparedPayout>("/api/payouts", { body: { asset, amountBase, receiveAsset, destinationId: destination.id } }));
     } catch (error) {
       toast.error("Couldn't prepare this payout", { description: errorMessage(error) });

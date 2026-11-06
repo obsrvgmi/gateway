@@ -6,14 +6,14 @@ import { ASSETS } from "@/lib/assets";
 import { db, schema } from "@/server/db";
 import { resetEnv } from "@/server/env";
 import { newId } from "@/server/ids";
-import { createSession } from "@/server/payments/checkout";
+import { createSession, loadSession, publicSession } from "@/server/payments/checkout";
 import { assertAboveDestinationMinimum } from "@/server/payments/guards";
 import { applyPaymentStatus } from "@/server/payments/poller";
-import { applyPayoutStatus, preparePayout, submitPayout } from "@/server/payments/payouts";
+import { applyPayoutStatus, pollDuePayouts, preparePayout, submitPayout } from "@/server/payments/payouts";
 import { provider, setProviderForTests } from "@/server/payments/provider";
 import { signSimQuote, SimProvider } from "@/server/payments/provider/sim";
-import type { QuoteRequest, QuoteResponse, SwapProvider } from "@/server/payments/provider/types";
-import { applyRefundStatus, prepareRefund, submitRefund } from "@/server/payments/refunds";
+import { ProviderRejected, ProviderUnavailable, type QuoteRequest, type QuoteResponse, type SwapProvider } from "@/server/payments/provider/types";
+import { applyRefundStatus, pollDueRefunds, prepareRefund, submitRefund } from "@/server/payments/refunds";
 import { loadSource } from "@/server/payments/source";
 import { addDestination, issueChallenge } from "@/server/payments/wallet";
 import { createLink, createOrg, freshDatabase, WALLET_KEY } from "./support/db";
@@ -269,5 +269,182 @@ describe("adding a destination", () => {
     const message = issueChallenge("destination", orgId, OTHER);
     await expect(addDestination({ orgId, userId, label: "x", address: OTHER, message, signature: await merchant.signMessage({ message }) })).rejects.toMatchObject({ code: "not_permitted" });
     await db().delete(schema.screenedAddresses);
+  });
+});
+
+describe("a send whose outcome is unknown", () => {
+  const pending = { status: "PENDING_DEPOSIT" as const, updatedAt: new Date().toISOString(), swapDetails: { originChainTxHashes: [], destinationChainTxHashes: [] } };
+  const force = (table: typeof schema.payouts | typeof schema.refunds, id: string) => db().update(table).set({ nextPollAt: new Date(Date.now() - 1000), submitAttemptedAt: new Date(Date.now() - 120_000) }).where(eq(table.id, id));
+
+  it("isn't marked failed because a resend was refused, which is what a duplicate of a landed send gets", async () => {
+    const { orgId, userId, request } = await payoutSetup();
+    const prepared = await preparePayout(request);
+    setProviderForTests(hostile({ submitIntent: async () => { throw new ProviderUnavailable("timeout"); } }));
+    await submitPayout({ orgId, payoutId: prepared.id, signature: await merchant.signMessage({ message: prepared.payload }), userId });
+
+    setProviderForTests(hostile({ status: async () => pending, submitIntent: async () => { throw new ProviderRejected(400, "nonce already used"); } }));
+    await force(schema.payouts, prepared.id);
+    await pollDuePayouts();
+    const [row] = await db().select().from(schema.payouts).where(eq(schema.payouts.id, prepared.id));
+    expect(row.state).toBe("submitting");
+    // Still reserved, so "try again" can't pay it twice.
+    await expect(preparePayout({ ...request, amountBase: 95_000_000n })).rejects.toMatchObject({ code: "insufficient_available" });
+  });
+
+  it("releases only after the signed deadline, when it can't execute any more", async () => {
+    const { orgId, userId, request } = await payoutSetup();
+    const prepared = await preparePayout(request);
+    setProviderForTests(hostile({ submitIntent: async () => { throw new ProviderUnavailable("timeout"); } }));
+    await submitPayout({ orgId, payoutId: prepared.id, signature: await merchant.signMessage({ message: prepared.payload }), userId });
+    setProviderForTests(null);
+    const after = new Date(Date.parse((JSON.parse(prepared.payload) as { deadline: string }).deadline) + 1000);
+    const row = await applyPayoutStatus(prepared.id, pending, after);
+    expect(row?.state).toBe("failed");
+    expect(row?.nextPollAt).toBeNull();
+  });
+
+  it("does the same for a refund", async () => {
+    await fund(100_000_000n);
+    const { orgId, userId } = await createOrg({ walletAddress: wallet });
+    const source = await loadSource(await createLink(orgId));
+    const session = await createSession(source, { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: key() });
+    await applyPaymentStatus(session.id, { ...pending, status: "SUCCESS", swapDetails: { amountOut: "50000000", originChainTxHashes: [], destinationChainTxHashes: [] } });
+    const prepared = await prepareRefund({ orgId, paymentId: session.id, userId });
+    if (prepared.kind !== "intent") throw new Error("expected an intent refund");
+    const submitIntent = vi.fn(async (): Promise<{ intentHash: string }> => { throw new ProviderUnavailable("timeout"); });
+    setProviderForTests(hostile({ submitIntent }));
+    await submitRefund({ orgId, refundId: prepared.id, signature: await merchant.signMessage({ message: prepared.payload }), userId });
+
+    setProviderForTests(hostile({ status: async () => pending, submitIntent }));
+    await force(schema.refunds, prepared.id);
+    await pollDueRefunds();
+    expect(submitIntent).toHaveBeenCalledTimes(2);
+    const [row] = await db().select().from(schema.refunds).where(eq(schema.refunds.id, prepared.id));
+    expect(row.state).toBe("submitting");
+
+    setProviderForTests(null);
+    const after = new Date(Date.parse((JSON.parse(prepared.payload) as { deadline: string }).deadline) + 1000);
+    const closed = await applyRefundStatus(prepared.id, pending, after);
+    expect(closed?.state).toBe("failed");
+    expect((await db().select().from(schema.payments).where(eq(schema.payments.id, session.id)))[0].state).toBe("settled");
+  });
+});
+
+describe("a response that arrives after the poller already moved on", () => {
+  const SUCCESS = { status: "SUCCESS" as const, updatedAt: new Date().toISOString(), swapDetails: { originChainTxHashes: [], destinationChainTxHashes: [] } };
+
+  it("can't count a refund twice", async () => {
+    await fund(100_000_000n);
+    const { orgId, userId } = await createOrg({ walletAddress: wallet });
+    const source = await loadSource(await createLink(orgId));
+    const session = await createSession(source, { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: key() });
+    await applyPaymentStatus(session.id, { ...SUCCESS, swapDetails: { amountOut: "50000000", originChainTxHashes: [], destinationChainTxHashes: [] } });
+    const prepared = await prepareRefund({ orgId, paymentId: session.id, amountBase: "10000000", userId });
+    if (prepared.kind !== "intent") throw new Error("expected an intent refund");
+    // The send's response is slow, and the poller sees it finish first.
+    setProviderForTests(hostile({ submitIntent: async () => { await applyRefundStatus(prepared.id, SUCCESS); return { intentHash: "late" }; } }));
+    const row = await submitRefund({ orgId, refundId: prepared.id, signature: await merchant.signMessage({ message: prepared.payload }), userId });
+    expect(row.state).toBe("refunded");
+    await applyRefundStatus(prepared.id, SUCCESS);
+    expect((await db().select().from(schema.payments).where(eq(schema.payments.id, session.id)))[0].refundedBase).toBe("10000000");
+  });
+
+  it("can't reopen a payout that already went", async () => {
+    const { orgId, userId, request } = await payoutSetup();
+    const prepared = await preparePayout(request);
+    setProviderForTests(hostile({ submitIntent: async () => { await applyPayoutStatus(prepared.id, SUCCESS); return { intentHash: "late" }; } }));
+    const row = await submitPayout({ orgId, payoutId: prepared.id, signature: await merchant.signMessage({ message: prepared.payload }), userId });
+    expect(row.state).toBe("sent");
+  });
+});
+
+describe("a failure that may yet go through", () => {
+  const FAILED = { status: "FAILED" as const, updatedAt: new Date().toISOString(), swapDetails: { originChainTxHashes: [], destinationChainTxHashes: [] } };
+  const REFUNDED = { ...FAILED, status: "REFUNDED" as const };
+  const SUCCESS = { ...FAILED, status: "SUCCESS" as const };
+
+  async function refundInFlight() {
+    await fund(100_000_000n);
+    const { orgId, userId } = await createOrg({ walletAddress: wallet });
+    const source = await loadSource(await createLink(orgId));
+    const session = await createSession(source, { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: key() });
+    await applyPaymentStatus(session.id, { ...SUCCESS, swapDetails: { amountOut: "50000000", originChainTxHashes: [], destinationChainTxHashes: [] } });
+    const prepared = await prepareRefund({ orgId, paymentId: session.id, userId });
+    if (prepared.kind !== "intent") throw new Error("expected an intent refund");
+    await submitRefund({ orgId, refundId: prepared.id, signature: await merchant.signMessage({ message: prepared.payload }), userId });
+    return { orgId, userId, paymentId: session.id, refundId: prepared.id };
+  }
+
+  it("blocks a new refund and keeps watching, because a late success would pay twice", async () => {
+    const { orgId, userId, paymentId, refundId } = await refundInFlight();
+    const row = await applyRefundStatus(refundId, FAILED);
+    expect(row?.state).toBe("failed");
+    expect(row?.nextPollAt).not.toBeNull();
+    await expect(prepareRefund({ orgId, paymentId, userId })).rejects.toMatchObject({ code: "refund_open" });
+    await applyRefundStatus(refundId, SUCCESS);
+    const payment = (await db().select().from(schema.payments).where(eq(schema.payments.id, paymentId)))[0];
+    expect(payment.state).toBe("refunded");
+  });
+
+  it("frees the refund once the route confirms the money came back", async () => {
+    const { orgId, userId, paymentId, refundId } = await refundInFlight();
+    await applyRefundStatus(refundId, FAILED);
+    const row = await applyRefundStatus(refundId, REFUNDED);
+    expect(row?.nextPollAt).toBeNull();
+    await expect(prepareRefund({ orgId, paymentId, userId })).resolves.toBeTruthy();
+  });
+
+  it("keeps a failed payout's funds reserved while it's watched", async () => {
+    const { orgId, userId, request } = await payoutSetup();
+    const prepared = await preparePayout(request);
+    await submitPayout({ orgId, payoutId: prepared.id, signature: await merchant.signMessage({ message: prepared.payload }), userId });
+    await fund(100_000_000n);
+    await applyPayoutStatus(prepared.id, FAILED);
+    await expect(preparePayout({ ...request, amountBase: 95_000_000n })).rejects.toMatchObject({ code: "insufficient_available" });
+    await applyPayoutStatus(prepared.id, REFUNDED);
+    await expect(preparePayout({ ...request, amountBase: 95_000_000n })).resolves.toBeTruthy();
+  });
+});
+
+describe("what SUCCESS actually delivered", () => {
+  const success = (details: Record<string, unknown>) => ({ status: "SUCCESS" as const, updatedAt: new Date().toISOString(), swapDetails: { originChainTxHashes: [], destinationChainTxHashes: [], ...details } });
+  async function open() {
+    const { orgId } = await createOrg({ walletAddress: wallet });
+    const source = await loadSource(await createLink(orgId));
+    const session = await createSession(source, { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: key() });
+    return { orgId, id: session.id };
+  }
+
+  it("isn't settled with nothing delivered", async () => {
+    const { orgId, id } = await open();
+    const row = await applyPaymentStatus(id, success({ amountOut: "0" }));
+    expect(row?.state).toBe("underpaid");
+    expect((await db().select().from(schema.outbox).where(eq(schema.outbox.orgId, orgId))).map((event) => event.type)).not.toContain("payment.settled");
+  });
+
+  it("isn't settled when the amount is missing, and isn't assumed to be in full", async () => {
+    const { id } = await open();
+    const row = await applyPaymentStatus(id, success({}));
+    expect(row?.state).toBe("awaiting_deposit");
+    expect(row?.receivedBase).toBeNull();
+    expect(row?.nextPollAt).not.toBeNull();
+  });
+
+  it("can't be refunded automatically when it arrived short", async () => {
+    const { orgId, id } = await open();
+    await applyPaymentStatus(id, success({ amountOut: "1" }));
+    const [{ userId }] = await db().select({ userId: schema.memberships.userId }).from(schema.memberships).where(eq(schema.memberships.orgId, orgId));
+    await expect(prepareRefund({ orgId, paymentId: id, userId })).rejects.toMatchObject({ code: "not_refundable" });
+  });
+});
+
+describe("a checkout's reload", () => {
+  it("knows the customer already sent, so the pay button can't come back", async () => {
+    const { orgId } = await createOrg({ walletAddress: wallet });
+    const source = await loadSource(await createLink(orgId));
+    const session = await createSession(source, { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: key() });
+    expect(session.depositSubmitted).toBe(false);
+    await db().update(schema.payments).set({ clientTxHash: "0xcustomer" }).where(eq(schema.payments.id, session.id));
+    expect(publicSession(await loadSession(session.id)).depositSubmitted).toBe(true);
   });
 });

@@ -11,15 +11,15 @@ import { api, errorMessage } from "@/lib/api";
 import { ASSETS } from "@/lib/assets";
 import { formatToken } from "@/lib/format";
 import { baseToDecimal, decimalToBase } from "@/lib/money";
-import { signTransfer, type PreparedTransfer } from "@/lib/sign-intent";
+import { signTransfer, verifiedRouteAddress, type ExpectedMove, type PreparedTransfer } from "@/lib/sign-intent";
 import { refresh, useGateway } from "@/lib/store";
 import type { AssetSymbol, Payment } from "@/lib/types";
 import { connectWallet, sendDeposit } from "@/lib/wallet";
 import { copyText } from "./ui";
 
 type Prepared =
-  | (PreparedTransfer & { id: string; kind: "intent"; asset: AssetSymbol; payAsset: AssetSymbol; payBase: string; minPayBase: string; recipient: string })
-  | { id: string; kind: "route"; asset: AssetSymbol; amountBase: string; amount: string; chain: string; payAsset: AssetSymbol; payBase: string; minPayBase: string; recipient: string; depositAddress: string; depositMemo: string | null };
+  | (PreparedTransfer & { id: string; kind: "intent"; amountBase: string; signer: string; payBase: string; minPayBase: string })
+  | { id: string; kind: "route"; amountBase: string; chain: string; owner: string; payBase: string; minPayBase: string; depositAddress: string; depositMemo: string | null; depositTxHash: string | null; quote: unknown; quoteKey: string };
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -37,7 +37,6 @@ const units = (base: string, asset: AssetSymbol) => baseToDecimal(base, ASSETS[a
  * paid with. The server takes that from the payment and never from this form.
  */
 function Form({ payment, onClose }: { payment: Payment; onClose: () => void }) {
-  const { mode, settlement } = useGateway();
   const refundedUsd = payment.detail?.refundedUsd ?? 0;
   const ratio = payment.usd > 0 ? 1 - refundedUsd / payment.usd : 1;
   const remaining = payment.receiveAmount * ratio;
@@ -46,6 +45,9 @@ function Form({ payment, onClose }: { payment: Payment; onClose: () => void }) {
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [busy, setBusy] = useState(false);
   const decimals = ASSETS[payment.receiveAsset].tokenDecimals;
+  const { mode } = useGateway();
+  // Set from the payment on screen. The recipient and the assets can't come from the server's reply.
+  const expectedFor = (signer: string, amountBase: string): ExpectedMove => ({ signer, recipient: payment.payer, asset: payment.receiveAsset, receiveAsset: payment.payAsset, amountBase });
 
   const prepare = async () => {
     setBusy(true);
@@ -63,7 +65,7 @@ function Form({ payment, onClose }: { payment: Payment; onClose: () => void }) {
     if (prepared?.kind !== "intent") return;
     setBusy(true);
     try {
-      const signature = await signTransfer(prepared, { recipient: prepared.recipient, mode });
+      const signature = await signTransfer(prepared, expectedFor(prepared.signer, prepared.amountBase));
       await api(`/api/refunds/${prepared.id}/sign`, { body: { signature } });
       await refresh();
       toast.success("Refund on its way", { description: "You'll get a notification when it lands." });
@@ -78,9 +80,11 @@ function Form({ payment, onClose }: { payment: Payment; onClose: () => void }) {
     if (prepared?.kind !== "route") return;
     setBusy(true);
     try {
+      const to = verifiedRouteAddress(prepared, expectedFor(prepared.owner, prepared.amountBase));
       const from = await connectWallet();
-      if (settlement.wallet && from !== settlement.wallet) throw new Error(`Switch your wallet to ${settlement.wallet}, which received this payment.`);
-      await sendDeposit({ asset: ASSETS[prepared.asset], to: prepared.depositAddress, amountBase: prepared.amountBase, from });
+      const txHash = await sendDeposit({ asset: ASSETS[payment.receiveAsset], to, amountBase: prepared.amountBase, from });
+      // Remembered at once, so opening this again can't offer a second send.
+      await api(`/api/refunds/${prepared.id}/deposit`, { body: { txHash } }).catch(() => undefined);
       await refresh();
       toast.success("Refund sent", { description: "It updates here once the route sees it." });
       onClose();
@@ -91,28 +95,28 @@ function Form({ payment, onClose }: { payment: Payment; onClose: () => void }) {
   };
 
   if (prepared) {
-    const leaves = prepared.kind === "route" ? prepared.amountBase : prepared.amountBase;
+    const alreadySent = prepared.kind === "route" && Boolean(prepared.depositTxHash);
     return (
       <>
         <ModalHeader title={prepared.kind === "intent" ? "Check and sign" : "Send the refund"} description={prepared.kind === "intent" ? "Your wallet signs this. Gateway can't send it without you." : `Send from your wallet on ${prepared.chain}. The route delivers it to the customer in the asset they paid with.`} />
         <ModalBody className="flex flex-col gap-4 pb-1">
           <dl className="dash-well flex flex-col gap-1.5 rounded-xl p-3">
-            <Row label="You send">{units(leaves, prepared.asset)} {prepared.asset}{prepared.kind === "route" ? ` on ${prepared.chain}` : ""}</Row>
-            <Row label="Customer receives about">{units(prepared.payBase, prepared.payAsset)} {prepared.payAsset} on {ASSETS[prepared.payAsset].chain}</Row>
-            <Row label="At least">{units(prepared.minPayBase, prepared.payAsset)} {prepared.payAsset}</Row>
-            <Row label="Customer's wallet"><span dir="ltr">{prepared.recipient}</span></Row>
+            <Row label="You send">{units(prepared.amountBase, payment.receiveAsset)} {payment.receiveAsset}{prepared.kind === "route" ? ` on ${prepared.chain}` : ""}</Row>
+            <Row label="Customer receives about">{units(prepared.payBase, payment.payAsset)} {payment.payAsset} on {ASSETS[payment.payAsset].chain}</Row>
+            <Row label="At least">{units(prepared.minPayBase, payment.payAsset)} {payment.payAsset}</Row>
+            <Row label="Customer's wallet"><span dir="ltr">{payment.payer}</span></Row>
             {prepared.kind === "route" && <Row label="Send to"><span dir="ltr">{prepared.depositAddress}</span></Row>}
             {prepared.kind === "route" && prepared.depositMemo && <Row label="Memo, required"><span dir="ltr">{prepared.depositMemo}</span></Row>}
           </dl>
           <p className="flex items-start gap-1.5 text-caption-1-regular text-text-secondary">
             <RiShieldCheckLine className="mt-px size-4 shrink-0" aria-hidden />
-            {prepared.kind === "intent" ? "Your wallet shows a transfer to a one-time routing address. This browser has checked the route's signature proves it pays the customer's wallet above." : `Send exactly this asset on ${prepared.chain}, once. Anything else may be lost. If you already sent it, don't send it again.`}
+            {prepared.kind === "intent" ? "Your wallet shows a transfer to a one-time routing address. This browser has checked the route's signature proves it pays the customer's wallet above." : alreadySent ? "You sent this. It updates here once the route sees it, so don't send it again." : `Send exactly this asset on ${prepared.chain}, once. Anything else may be lost. If you already sent it, don't send it again.`}
           </p>
         </ModalBody>
         <ModalFooter>
           <Button variant="ghost" disabled={busy} onClick={onClose}>Cancel</Button>
-          {prepared.kind === "route" && <Button variant="secondary" leadingIcon={RiFileCopyLine} onClick={() => void copyText(prepared.depositAddress, "Address")}>Copy address</Button>}
-          {prepared.kind === "intent" ? <Button disabled={busy} onClick={() => void signAndSend()}>{busy ? "Waiting for wallet" : "Sign in wallet"}</Button> : <Button disabled={busy} onClick={() => void sendFromWallet()}>{busy ? "Waiting for wallet" : "Send from wallet"}</Button>}
+          {prepared.kind === "route" && !alreadySent && <Button variant="secondary" leadingIcon={RiFileCopyLine} onClick={() => { try { void copyText(verifiedRouteAddress(prepared, expectedFor(prepared.owner, prepared.amountBase)), "Address"); } catch (error) { toast.error("Address not copied", { description: errorMessage(error) }); } }}>Copy address</Button>}
+          {prepared.kind === "intent" ? <Button disabled={busy} onClick={() => void signAndSend()}>{busy ? "Waiting for wallet" : "Sign in wallet"}</Button> : alreadySent ? <Button onClick={onClose}>Done</Button> : <Button disabled={busy} onClick={() => void sendFromWallet()}>{busy ? "Waiting for wallet" : "Send from wallet"}</Button>}
         </ModalFooter>
       </>
     );

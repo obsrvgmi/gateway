@@ -14,6 +14,8 @@ const schema = z.object({
   SECRET_KEY: z.string().min(32),
   /** The client address is the last X-Forwarded-For hop. Only set this behind a proxy that appends it. */
   TRUST_PROXY: z.stringbool().default(false),
+  /** How many proxies append to X-Forwarded-For in front of the app. A wrong number buckets everyone together, or trusts a forged address. */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(1).max(5).default(1),
 
   EMAIL_PROVIDER: z.enum(["console", "resend", "file"]).default("console"),
   EMAIL_FROM: z.string().default("Gateway <no-reply@localhost>"),
@@ -62,8 +64,16 @@ export function liveGateFailures(config: Env = env()): string[] {
   if (!config.ONECLICK_API_KEY) failures.push("ONECLICK_API_KEY is not set");
   if (config.LIVE_PAYMENTS_ACK !== LIVE_ACK_PHRASE) failures.push("LIVE_PAYMENTS_ACK does not match the required phrase");
   if (config.APP_FEE_BPS > 0 && !config.APP_FEE_RECIPIENT) failures.push("APP_FEE_BPS is set without APP_FEE_RECIPIENT");
+  if (!config.TRUST_PROXY) failures.push("TRUST_PROXY is off, so per-address rate limits can't run");
+  if (!config.APP_URL.startsWith("https://")) failures.push("APP_URL must be https");
   return failures;
 }
+
+/**
+ * Asked for live, and a gate failed. Payments stop rather than quietly becoming test mode: a typo must
+ * not leave a site taking simulated payments that fire signed webhooks while its operator thinks it's live.
+ */
+export const liveRefused = (config: Env = env()) => config.PAYMENTS_MODE === "live" && liveGateFailures(config).length > 0;
 
 /** Real money only when asked for and every gate passes. Anything else is test mode. */
 export function paymentsMode(config: Env = env()): "sim" | "live" {

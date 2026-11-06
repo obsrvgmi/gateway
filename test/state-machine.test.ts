@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { dashboardStatus, isVisiblePayment, MAX_POLL_FAILURES, nextIntentState, nextPaymentState, nextPollDelayMs, shouldExpire, type PaymentState } from "@/server/payments/state-machine";
+import { dashboardStatus, isVisiblePayment, nextIntentState, nextPaymentState, nextPollDelayMs, shouldExpire, type PaymentState } from "@/server/payments/state-machine";
 import type { ProviderStatus } from "@/server/payments/provider/types";
 
-const STATES: PaymentState[] = ["quoting", "quote_failed", "awaiting_deposit", "deposit_seen", "incomplete_deposit", "processing", "settled", "provider_refunded", "failed", "expired", "refund_pending", "refunded"];
+const STATES: PaymentState[] = ["quoting", "quote_failed", "awaiting_deposit", "deposit_seen", "incomplete_deposit", "processing", "settled", "underpaid", "provider_refunded", "failed", "expired", "refund_pending", "refunded"];
 const STATUSES: ProviderStatus[] = ["KNOWN_DEPOSIT_TX", "PENDING_DEPOSIT", "INCOMPLETE_DEPOSIT", "PROCESSING", "SUCCESS", "REFUNDED", "FAILED"];
 
 describe("nextPaymentState", () => {
@@ -23,8 +23,12 @@ describe("nextPaymentState", () => {
     expect(nextPaymentState("expired", "REFUNDED")).toBe("provider_refunded");
   });
 
-  it("never moves a settled payment", () => {
-    for (const status of STATUSES) expect(nextPaymentState("settled", status)).toBeNull();
+  it("never moves a finished payment", () => {
+    for (const status of STATUSES) {
+      expect(nextPaymentState("settled", status)).toBeNull();
+      expect(nextPaymentState("underpaid", status)).toBeNull();
+      expect(nextPaymentState("provider_refunded", status)).toBeNull();
+    }
   });
 
   it("never lets a late poll undo a merchant refund", () => {
@@ -76,17 +80,17 @@ describe("nextPollDelayMs", () => {
   });
 
   it("slows down, but keeps watching past the deadline", () => {
-    expect(nextPollDelayMs(input({ createdAt: NOW - 2 * HOUR }))).toBe(60_000);
-    expect(nextPollDelayMs(input({ state: "expired", createdAt: NOW - 5 * DAY, deadline: NOW - 2 * DAY }))).toBe(HOUR);
+    expect(nextPollDelayMs(input({ createdAt: NOW - 2 * HOUR }))).toBe(300_000);
+    expect(nextPollDelayMs(input({ state: "expired", createdAt: NOW - 5 * DAY, deadline: NOW - 2 * DAY }))).toBe(6 * HOUR);
   });
 
   it("gives up on a quiet address a month after its deadline, not before", () => {
-    expect(nextPollDelayMs(input({ state: "expired", createdAt: NOW - 40 * DAY, deadline: NOW - 29 * DAY }))).toBe(HOUR);
+    expect(nextPollDelayMs(input({ state: "expired", createdAt: NOW - 40 * DAY, deadline: NOW - 29 * DAY }))).toBe(6 * HOUR);
     expect(nextPollDelayMs(input({ state: "expired", createdAt: NOW - 40 * DAY, deadline: NOW - 31 * DAY }))).toBeNull();
   });
 
   it("keeps polling a failed payment, which may still reach a refund", () => {
-    expect(nextPollDelayMs(input({ state: "failed", createdAt: NOW - 2 * HOUR }))).not.toBeNull();
+    expect(nextPollDelayMs(input({ state: "failed", createdAt: NOW - 2 * HOUR }))).toBe(60_000);
   });
 
   it("never stops asking about money in flight, only slows down", () => {
@@ -110,8 +114,14 @@ describe("nextPollDelayMs", () => {
     expect(nextPollDelayMs(input({ failures: 20 }))).toBe(1_800_000);
   });
 
-  it("stops after too many straight errors, so a person can look", () => {
-    expect(nextPollDelayMs(input({ failures: MAX_POLL_FAILURES }))).toBeNull();
+  it("never gives up on money in flight, however long the provider keeps failing", () => {
+    for (const state of ["deposit_seen", "processing", "incomplete_deposit", "failed"] as PaymentState[]) {
+      expect(nextPollDelayMs(input({ state, createdAt: NOW - 400 * DAY, deadline: NOW - 397 * DAY, failures: 5000 }))).toBe(1_800_000);
+    }
+  });
+
+  it("does give up on a quiet address a month after its deadline", () => {
+    expect(nextPollDelayMs(input({ state: "expired", createdAt: NOW - 40 * DAY, deadline: NOW - 31 * DAY, failures: 3 }))).toBeNull();
   });
 });
 
@@ -143,6 +153,7 @@ describe("dashboard mapping", () => {
     expect(dashboardStatus("expired")).toBe("expired");
     expect(dashboardStatus("provider_refunded")).toBe("failed");
     expect(dashboardStatus("failed")).toBe("failed");
+    expect(dashboardStatus("underpaid")).toBe("failed");
   });
 });
 

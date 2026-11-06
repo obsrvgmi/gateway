@@ -66,6 +66,7 @@ CREATE TABLE "invites" (
 CREATE TABLE "login_tokens" (
 	"token_hash" text PRIMARY KEY NOT NULL,
 	"email" text NOT NULL,
+	"nonce_hash" text,
 	"expires_at" timestamp with time zone NOT NULL,
 	"used_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -181,6 +182,7 @@ CREATE TABLE "payments" (
 	"provider_refunded_base" numeric(78, 0),
 	"provider_refund_reason" text,
 	"failure_reason" text,
+	"client_tx_hash" text,
 	"settle_seconds" integer,
 	"refunded_base" numeric(78, 0) DEFAULT '0' NOT NULL,
 	"live" boolean DEFAULT false NOT NULL,
@@ -263,6 +265,7 @@ CREATE TABLE "refunds" (
 	"sign_expires_at" timestamp with time zone,
 	"provider_status" text,
 	"tx_hash" text,
+	"deposit_tx_hash" text,
 	"failure_reason" text,
 	"requested_by" text,
 	"live" boolean DEFAULT false NOT NULL,
@@ -423,6 +426,7 @@ CREATE INDEX "rate_limits_window_idx" ON "rate_limits" USING btree ("window_star
 CREATE INDEX "refunds_org_idx" ON "refunds" USING btree ("org_id");--> statement-breakpoint
 CREATE INDEX "refunds_payment_idx" ON "refunds" USING btree ("payment_id");--> statement-breakpoint
 CREATE INDEX "refunds_poll_idx" ON "refunds" USING btree ("next_poll_at") WHERE "refunds"."next_poll_at" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "refunds_one_open_idx" ON "refunds" USING btree ("payment_id") WHERE "refunds"."state" in ('awaiting_deposit', 'submitting', 'processing');--> statement-breakpoint
 CREATE INDEX "sessions_user_idx" ON "sessions" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "wallet_changes_org_idx" ON "wallet_changes" USING btree ("org_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "webhook_deliveries_unique_idx" ON "webhook_deliveries" USING btree ("webhook_id","event_id");--> statement-breakpoint

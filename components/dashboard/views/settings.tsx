@@ -167,7 +167,7 @@ function BrandingCard({ settings }: { settings: Settings }) {
   const dirty = accent !== settings.branding.accent || supportEmail !== settings.branding.supportEmail || statementName !== settings.branding.statementName;
 
   const save = () => {
-    if (!EMAIL_PATTERN.test(supportEmail.trim())) {
+    if (supportEmail.trim() !== "" && !EMAIL_PATTERN.test(supportEmail.trim())) {
       setEmailInvalid(true);
       return;
     }
@@ -184,7 +184,7 @@ function BrandingCard({ settings }: { settings: Settings }) {
           <span dir="ltr" className="text-body-medium tabular-nums text-text-secondary">{accent}</span>
         </div>
       </div>
-      <Input label="Support email" type="email" inputDir="ltr" value={supportEmail} onChange={(value) => { setSupportEmail(value); setEmailInvalid(false); }} isInvalid={emailInvalid} errorMessage="Enter a valid email address." />
+      <Input label="Support email" hint="Shown to customers at checkout." type="email" inputDir="ltr" value={supportEmail} onChange={(value) => { setSupportEmail(value); setEmailInvalid(false); }} isInvalid={emailInvalid} errorMessage="Enter a valid email address." />
       <Input label="Statement name" value={statementName} onChange={setStatementName} />
       <div className="flex justify-end"><Button variant="secondary" disabled={!dirty} onClick={save}>Save branding</Button></div>
     </Panel>
@@ -342,7 +342,7 @@ function TeamCard({ team }: { team: Settings["team"] }) {
   };
 
   return (
-    <Panel title="Team" description="Owners and admins manage the workspace. Finance handles payouts and refunds. Viewers can only look." actions={<Button variant="secondary" size="small" leadingIcon={RiAddLine} onClick={() => setInviting(true)}>Invite</Button>} className="col-span-12 @2xl:col-span-6">
+    <Panel title="Team" description="Owners and admins manage the workspace. Finance handles payouts and refunds, and only an owner can grant it. Viewers can only look." actions={<Button variant="secondary" size="small" leadingIcon={RiAddLine} onClick={() => setInviting(true)}>Invite</Button>} className="col-span-12 @2xl:col-span-6">
       {team.length === 0 ? <EmptyState icon={RiGroupLine} title="No teammates" description="Invite someone to help run the account." /> : (
         <ul className="flex flex-col divide-y divide-separator-border">
           {team.map((member) => (

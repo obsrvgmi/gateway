@@ -42,8 +42,9 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
-      // Merchants embed this on their own sites. Everything else refuses to be framed.
-      { source: "/embed/:path*", headers: [...common, { key: "Content-Security-Policy", value: contentSecurityPolicy("*") }] },
+      // Merchants embed this on their own sites, so `proxy.ts` sets its policy from the widget's site.
+      { source: "/embed/:path*", headers: common },
+      // Everything else refuses to be framed.
       { source: "/((?!embed/).*)", headers: [...common, { key: "Content-Security-Policy", value: contentSecurityPolicy("'none'") }, { key: "X-Frame-Options", value: "DENY" }] },
       // The loader runs on merchants' pages, so it needs to be fetched from anywhere.
       { source: "/widget.js", headers: [{ key: "Access-Control-Allow-Origin", value: "*" }, { key: "Cache-Control", value: "public, max-age=300" }, { key: "Cross-Origin-Resource-Policy", value: "cross-origin" }] },

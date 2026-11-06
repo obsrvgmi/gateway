@@ -1,4 +1,5 @@
 import "server-only";
+import { isIPv6 } from "node:net";
 import { NextResponse, type NextRequest } from "next/server";
 import { ZodError, type z } from "zod";
 import { can, type Permission, type Role } from "../auth/rbac";
@@ -57,10 +58,26 @@ export interface OrgContext extends SessionContext {
   userId: string;
 }
 
+/** Rate limits group IPv6 by /64, because one customer's connection usually holds a whole /64. */
+function bucketAddress(address: string) {
+  if (!isIPv6(address)) return address;
+  const [head, tail = ""] = address.split("::");
+  const front = head ? head.split(":") : [];
+  const back = tail ? tail.split(":") : [];
+  return `${[...front, ...Array(Math.max(0, 8 - front.length - back.length)).fill("0"), ...back].slice(0, 4).join(":")}::/64`;
+}
+
+/**
+ * The address our own proxy saw. Each proxy appends to X-Forwarded-For, so counting back the known
+ * number of hops gets an address a client can't forge. Without a configured proxy there's no address to
+ * trust at all, which is why live mode requires one.
+ */
 export function clientIp(request: NextRequest) {
-  if (!env().TRUST_PROXY) return null;
+  const { TRUST_PROXY, TRUSTED_PROXY_HOPS } = env();
+  if (!TRUST_PROXY) return null;
   const hops = request.headers.get("x-forwarded-for")?.split(",").map((hop) => hop.trim()).filter(Boolean);
-  return hops?.[hops.length - 1] ?? null;
+  const address = hops?.[hops.length - TRUSTED_PROXY_HOPS];
+  return address ? bucketAddress(address) : null;
 }
 
 async function principalOf(request: NextRequest) {
@@ -88,13 +105,36 @@ export function orgRoute(permission: Permission, handler: (request: NextRequest,
   });
 }
 
-/** Parses a JSON body against a schema. Bodies over 256 KB are refused, which covers a logo data URL. */
+const MAX_BODY_BYTES = 256 * 1024;
+
+/**
+ * Counts bytes as they arrive. `Content-Length` is only a claim, and a chunked body has none, so
+ * trusting it would let anyone fill the server's memory. This cap leaves room for a logo data URL.
+ */
+export async function readBody(request: NextRequest): Promise<string> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel();
+      throw new HttpError(413, "too_large", "Request is too large.");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/** Parses a JSON body against a schema. */
 export async function readJson<T extends z.ZodType>(request: NextRequest, schema: T): Promise<z.output<T>> {
-  const length = Number(request.headers.get("content-length") ?? 0);
-  if (length > 256 * 1024) throw badRequest("Request is too large.");
+  const text = await readBody(request);
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(text);
   } catch {
     throw badRequest("Request body must be JSON.");
   }

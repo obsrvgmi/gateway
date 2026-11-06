@@ -49,7 +49,7 @@ async function hook(orgId: string, events = ["payment.settled"]) {
 }
 
 describe("private addresses", () => {
-  it.each(["127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "198.18.0.1", "224.0.0.1", "::1", "::", "fc00::1", "fd12::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "not-an-ip"])("blocks %s", (address) => {
+  it.each(["127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "198.18.0.1", "224.0.0.1", "::1", "::", "fc00::1", "fd12::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "::ffff:7f00:1", "::ffff:a00:1", "::ffff:a9fe:a9fe", "64:ff9b::7f00:1", "2002:7f00:1::", "not-an-ip"])("blocks %s", (address) => {
     expect(isPrivateAddress(address)).toBe(true);
   });
 
@@ -97,6 +97,60 @@ describe("encryption", () => {
     parts[3] = Buffer.from("tampered").toString("base64url");
     expect(() => decrypt(parts.join("."), "k".repeat(32))).toThrow();
     expect(encrypt("secret", "k".repeat(32))).not.toBe(sealed);
+  });
+});
+
+describe("an endpoint that misbehaves", () => {
+  it.each(["https://[::ffff:7f00:1]:9/h", "https://[::ffff:a9fe:a9fe]/h", "https://[64:ff9b::7f00:1]/h"])("refuses %s, however it's written", async (url) => {
+    process.env.WEBHOOKS_ALLOW_PRIVATE = "false";
+    resetEnv();
+    expect(() => assertWebhookUrl(url)).toThrow(/private/);
+  });
+
+  async function listening(handler: Parameters<typeof createServer>[1]) {
+    const site = createServer(handler);
+    await new Promise<void>((resolve) => site.listen(0, "127.0.0.1", resolve));
+    return { site, url: `http://127.0.0.1:${(site.address() as AddressInfo).port}/h` };
+  }
+
+  it("can't hang delivery by never answering", async () => {
+    const { site, url } = await listening(() => undefined);
+    await expect(postWebhook(url, "{}", {}, 200)).rejects.toThrow("Timed out");
+    site.closeAllConnections();
+    site.close();
+  });
+
+  it("can't hang delivery by dripping a body forever", async () => {
+    const { site, url } = await listening((_request, response) => {
+      response.writeHead(200);
+      const timer = setInterval(() => response.write("x"), 20);
+      response.on("close", () => clearInterval(timer));
+    });
+    await expect(postWebhook(url, "{}", {}, 2000)).resolves.toBe(200);
+    site.closeAllConnections();
+    site.close();
+  });
+
+  it("can't hang delivery by dropping the connection mid-body", async () => {
+    const { site, url } = await listening((_request, response) => {
+      response.writeHead(200);
+      response.write("x");
+      setTimeout(() => response.destroy(), 10);
+    });
+    await expect(postWebhook(url, "{}", {}, 2000)).resolves.toBe(200);
+    site.closeAllConnections();
+    site.close();
+  });
+
+  it("doesn't tell a merchant what a port did, so it can't map our network", async () => {
+    const { orgId } = await createOrg();
+    const id = newId("whk_");
+    await db().insert(schema.webhooks).values({ id, orgId, url: "http://127.0.0.1:1/h", events: ["payment.settled"], secretEnc: encrypt(SECRET, process.env.SECRET_KEY as string) });
+    await emit(db(), orgId, "payment.settled", { id: "pay_5", source: {} });
+    await processOutbox();
+    await deliverDueWebhooks();
+    const [row] = await db().select().from(schema.webhookDeliveries).where(eq(schema.webhookDeliveries.webhookId, id));
+    expect(row.lastError).toBe("Couldn't connect to the endpoint.");
   });
 });
 

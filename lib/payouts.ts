@@ -60,7 +60,8 @@ export function ledger(payments: Payment[], payouts: Payout[], holdDays: number,
       arrivingUsd += payment.usd;
       arrivingCount += 1;
     }
-    if (payment.status !== "settled") continue;
+    // Direct settlement went straight to the wallet, so it's neither held nor available here.
+    if (payment.status !== "settled" || payment.detail?.direct) continue;
     const releaseAt = new Date(payment.detail?.settledAt ?? payment.createdAt).getTime() + holdDays * DAY;
     if (releaseAt > now) {
       heldUsd += payment.usd;

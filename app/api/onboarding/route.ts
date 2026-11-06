@@ -25,7 +25,7 @@ export const POST = userRoute(async (request, { principal, ip }) => {
       id: orgId,
       businessName: input.businessName,
       receiveAsset: input.receiveAsset,
-      branding: { accent: "#00EC97", supportEmail: principal.user.email, statementName: input.businessName.slice(0, 60) },
+      branding: { accent: "#00EC97", supportEmail: "", statementName: input.businessName.slice(0, 60) },
       notifications: { settled: true, processing: false, refunded: true, expired: false, links: true },
       termsVersion: TERMS_VERSION,
       termsAcceptedAt: new Date(),

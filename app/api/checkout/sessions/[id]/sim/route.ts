@@ -1,4 +1,7 @@
+import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { db, schema } from "@/server/db";
+import { liveRefused } from "@/server/env";
 import { notFound } from "@/server/http/errors";
 import { assertSameOrigin, json, publicRoute, readJson } from "@/server/http/route";
 import { loadSession } from "@/server/payments/checkout";
@@ -12,11 +15,12 @@ const body = z.object({ scenario: z.enum(["pay", "underpay", "fail"]).default("p
 export const POST = publicRoute(async (request, { id }) => {
   assertSameOrigin(request);
   const active = provider();
-  if (!(active instanceof SimProvider)) throw notFound();
+  if (!(active instanceof SimProvider) || liveRefused()) throw notFound();
   await limitCheckout(request, "sim", 30);
   const { scenario } = await readJson(request, body);
   const row = await loadSession(id);
   if (!row.depositAddress || row.live) throw notFound();
   await active.simulateDeposit(row.depositAddress, scenario);
+  await db().update(schema.payments).set({ clientTxHash: "simulated" }).where(eq(schema.payments.id, id));
   return json({ ok: true });
 });

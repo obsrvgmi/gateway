@@ -38,9 +38,10 @@ node dist/scripts/ops.mjs screen remove 0xabc...
 | Message | Meaning | Do |
 | --- | --- | --- |
 | `quote guard failed` | A provider response failed a check. No address was shown. | One is odd. Several, pause the route and ask NEAR. |
-| `payment settled below the quoted amount` | A merchant got less than promised. | Contact NEAR with the `correlationId` on the payment. |
+| `payment settled below the quoted amount` | A merchant got less than promised. The payment is `underpaid`, the merchant was told, and it can't be refunded from the dashboard. | Contact NEAR with the `correlationId` on the payment. |
 | `deposit changed after a final outcome` | A second deposit may have reached a used address. The merchant gets a notification. | Find the funds with NEAR. Records don't change automatically. |
-| `status polling keeps failing` | The provider is failing for one address. | Check NEAR's status. After 60 failures in a row polling stops, and a `payment.polling_stopped` audit entry is written. **Restart it by setting `next_poll_at` to now.** |
+| `status polling keeps failing` | The provider is failing for one address. Money in flight is never dropped, only retried less often. | Check NEAR's status and your API key. |
+| `provider reported success with no amount` | NEAR said SUCCESS without saying what arrived, so the payment isn't marked settled. | Ask NEAR with the payment's `correlationId`. |
 | `payments stuck in flight` | Money has been moving for over 6 hours. | Ask NEAR. Docs say a held transaction can be unavailable "for a period or indefinitely". |
 | `balance read failed` | NEAR RPC is down. Dashboards show balances as unavailable, and payouts are refused. | Consider a paid RPC via `NEAR_RPC_URL`. |
 
@@ -54,7 +55,7 @@ update organizations set wallet_address = null, wallet_verified_at = null where 
 insert into audit_log (org_id, actor_type, actor_id, action, detail) values ('org_...', 'system', 'ops', 'wallet.reset', '{"reason":"..."}');
 ```
 
-They then connect a new wallet as if for the first time. **This is the one path around the wallet-signature rule, so a stolen email account must never be enough to trigger it.** The balance under the old wallet stays there.
+They then connect a new wallet as if for the first time. **This is the one path around the wallet-signature rule, so a stolen email account must never be enough to trigger it.** The balance under the old wallet stays there. A refund of a payment that landed there can still be signed by that wallet.
 
 ## Rotating secrets
 

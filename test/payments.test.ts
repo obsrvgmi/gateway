@@ -53,27 +53,37 @@ function hostile(overrides: Partial<SwapProvider>): SwapProvider {
 
 describe("sim mode by default", () => {
   it("never reaches the real provider unless every live gate passes", async () => {
-    const { resetEnv, paymentsMode, liveGateFailures, LIVE_ACK_PHRASE } = await import("@/server/env");
+    const { resetEnv, paymentsMode, liveGateFailures, liveRefused, LIVE_ACK_PHRASE } = await import("@/server/env");
     const before = { ...process.env };
-    expect(paymentsMode()).toBe("sim");
-    Object.assign(process.env, { PAYMENTS_MODE: "live" });
-    resetEnv();
-    expect(paymentsMode()).toBe("sim");
-    expect(liveGateFailures().length).toBe(2);
-    Object.assign(process.env, { ONECLICK_API_KEY: "k" });
-    resetEnv();
-    expect(paymentsMode()).toBe("sim");
-    Object.assign(process.env, { LIVE_PAYMENTS_ACK: "yes" });
-    resetEnv();
-    expect(paymentsMode()).toBe("sim");
-    Object.assign(process.env, { LIVE_PAYMENTS_ACK: LIVE_ACK_PHRASE });
-    resetEnv();
-    expect(paymentsMode()).toBe("live");
-    Object.assign(process.env, { APP_FEE_BPS: "30" });
-    resetEnv();
-    expect(paymentsMode()).toBe("sim");
-    process.env = before;
-    resetEnv();
+    const set = (values: Record<string, string>) => {
+      Object.assign(process.env, values);
+      resetEnv();
+    };
+    try {
+      expect(paymentsMode()).toBe("sim");
+      expect(liveRefused()).toBe(false);
+      set({ PAYMENTS_MODE: "live" });
+      expect(paymentsMode()).toBe("sim");
+      expect(liveRefused()).toBe(true);
+      expect(liveGateFailures().length).toBe(4);
+      set({ ONECLICK_API_KEY: "k" });
+      expect(paymentsMode()).toBe("sim");
+      set({ LIVE_PAYMENTS_ACK: "yes" });
+      expect(paymentsMode()).toBe("sim");
+      set({ LIVE_PAYMENTS_ACK: LIVE_ACK_PHRASE });
+      expect(paymentsMode()).toBe("sim");
+      set({ TRUST_PROXY: "true" });
+      expect(paymentsMode()).toBe("sim");
+      set({ APP_URL: "https://pay.example.com" });
+      expect(paymentsMode()).toBe("live");
+      expect(liveRefused()).toBe(false);
+      set({ APP_FEE_BPS: "30" });
+      expect(paymentsMode()).toBe("sim");
+      expect(liveRefused()).toBe(true);
+    } finally {
+      process.env = before;
+      resetEnv();
+    }
   });
 });
 
@@ -312,8 +322,13 @@ describe("lifecycle against the simulator", () => {
     const { result } = await session(orgId);
     const row = await applyPaymentStatus(result.id, status("SUCCESS", { amountOut: "40000000" }));
     expect(row?.receivedBase).toBe("40000000");
+    expect(row?.state).toBe("underpaid");
     const logged = await db().select().from(schema.auditLog).where(eq(schema.auditLog.target, result.id));
     expect(logged.map((entry) => entry.action)).toContain("payment.short_settlement");
+    const types = (await db().select().from(schema.outbox).where(eq(schema.outbox.orgId, orgId))).map((event) => event.type);
+    expect(types).not.toContain("payment.settled");
+    expect(types).toContain("payment.failed");
+    expect(types).toContain("alert.short_settlement");
   });
 
   it("flags a deposit that changes after a final outcome, without moving money records", async () => {
@@ -585,6 +600,7 @@ describe("refunds", () => {
     const { orgId, userId, paymentId } = await settled({ settlementMode: "direct" });
     const prepared = await prepareRefund({ orgId, paymentId, userId });
     if (prepared.kind !== "route") throw new Error("expected a route refund");
+    expect(prepared.owner).toBe(wallet);
     expect(prepared.depositAddress).toMatch(/^sim_/);
     expect(prepared.chain).toBe("Base");
     expect(prepared.recipient).toBe(CUSTOMER);

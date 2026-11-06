@@ -75,6 +75,25 @@ test("a sign-in link works once", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "This link didn't work" })).toBeVisible();
 });
 
+test("a sign-in link opened in another browser asks first, and doesn't sign in silently", async ({ browser }) => {
+  const asker = await browser.newContext();
+  const page = await asker.newPage();
+  const address = `other-${Date.now()}@example.com`;
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(address);
+  await page.getByRole("button", { name: "Email me a link" }).click();
+  await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+  const link = /http\S+\/login\/verify\S+/.exec(latestEmail(address)?.text ?? "")?.[0];
+
+  const victim = await browser.newContext();
+  const other = await victim.newPage();
+  await other.goto(link as string);
+  await expect(other.getByRole("heading", { name: "Is this your account?" })).toBeVisible();
+  expect((await victim.cookies()).some((cookie) => cookie.name === "gw_session")).toBe(false);
+  await asker.close();
+  await victim.close();
+});
+
 test("checkout stays closed until a settlement wallet is connected", async () => {
   await merchant.goto("/dashboard/links/new");
   await merchant.getByLabel("Title").fill("Brand sprint deposit");
@@ -196,8 +215,10 @@ test("security headers are on, and the dashboard can't be framed", async ({ requ
   expect(page.headers()["x-frame-options"]).toBe("DENY");
   expect(page.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
   expect(page.headers()["x-content-type-options"]).toBe("nosniff");
+  // A widget nobody named a site for may go anywhere, which is what the embed test relies on.
   const embed = await request.get("/embed/wgt_probe");
   expect(embed.headers()["content-security-policy"]).toContain("frame-ancestors *");
+  expect(embed.headers()["x-frame-options"]).toBeUndefined();
 });
 
 test("the API is closed without a key, and a mutating request from another origin is refused", async ({ request }) => {

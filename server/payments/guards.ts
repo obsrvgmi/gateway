@@ -4,7 +4,7 @@ import { verifyQuoteSignature, type SignedQuote } from "@/lib/intents";
 import type { AssetSymbol } from "@/lib/types";
 import { audit } from "../audit";
 import { db, schema, type Db } from "../db";
-import { env } from "../env";
+import { env, liveRefused } from "../env";
 import { badRequest, conflict, HttpError } from "../http/errors";
 import { provider } from "./provider";
 import type { QuoteRequest, QuoteResponse, TokenInfo } from "./provider/types";
@@ -60,6 +60,7 @@ export const hasUnverifiableRoute = (assets: AssetSymbol[]) => provider().kind =
 
 /** The off switches: `payments` stops everything, `chain:x` and `asset:Y` one route. In-flight payments keep polling. */
 export async function assertRoutesOpen(assets: AssetSymbol[], database: Db = db()) {
+  if (liveRefused()) throw new HttpError(503, "payments_unavailable", "Payments are unavailable right now.");
   if (hasUnverifiableRoute(assets)) throw conflict("This payment route isn't available right now. Choose another asset.", "route_unverifiable");
   const keys = ["payments", ...assets.flatMap((asset) => [`asset:${asset}`, `chain:${ASSETS[asset].blockchain}`])];
   const paused = await database

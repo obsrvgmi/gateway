@@ -59,7 +59,8 @@ export function isValidAddress(kind: AddressKind, value: string): boolean {
     case "tron":
       return isTronAddress(value);
     case "near":
-      return NEAR_IMPLICIT.test(value) || NEAR_NAMED.test(value);
+      // `0x…` is a valid NEAR name, and almost certainly someone's EVM address pasted by mistake.
+      return NEAR_IMPLICIT.test(value) || (NEAR_NAMED.test(value) && !value.startsWith("0x"));
   }
 }
 

@@ -31,7 +31,8 @@ Set these on both the web and worker processes, then deploy with `PAYMENTS_MODE=
 DATABASE_URL=...
 APP_URL=https://your-domain
 SECRET_KEY=$(openssl rand -base64 48)
-TRUST_PROXY=true                 # only behind a proxy that appends X-Forwarded-For
+TRUST_PROXY=true                 # required for live. Only behind a proxy that appends X-Forwarded-For
+TRUSTED_PROXY_HOPS=1             # how many proxies do. Too high buckets everyone together. Too low trusts forged addresses
 EMAIL_PROVIDER=resend
 RESEND_API_KEY=...
 EMAIL_FROM="Gateway <no-reply@your-domain>"
@@ -62,7 +63,7 @@ LIVE_PAYMENTS_ACK="I understand this moves real customer funds"
 APP_FEE_BPS=0
 ```
 
-If any gate fails, the app stays in test mode and logs why. Confirm `/api/health` shows `"mode":"live"`.
+If any gate fails, payments stop rather than quietly becoming test mode: `/api/health` returns 503 with `live_refused` and the reasons. Confirm it shows `"mode":"live"`.
 
 ## 4. Canary, with your own small funds
 

@@ -20,7 +20,8 @@ import { metricsNow } from "@/lib/metrics";
 import { failedPayouts, formatPayoutDate, HOLD_OPTIONS, isWalletAddress, ledger, nextPayoutAt, nextPayoutEstimate } from "@/lib/payouts";
 import { api, errorMessage } from "@/lib/api";
 import { actions, newId, useGateway } from "@/lib/store";
-import { connectWallet, signMessage } from "@/lib/wallet";
+import { signChallenge } from "@/lib/sign-intent";
+import { connectWallet } from "@/lib/wallet";
 import type { PayoutSchedule, PayoutStatus } from "@/lib/types";
 import { BalanceBar, PayoutBars } from "../charts";
 import { payoutsCsv, saveCsv } from "../csv";
@@ -105,7 +106,7 @@ function DestinationModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
         const { message } = await api<{ message: string }>("/api/wallet/challenge", { body: { action: "destination", address: target } });
         const account = await connectWallet();
         if (account !== settlement.wallet) throw new Error(`Switch your wallet to ${settlement.wallet}, your settlement wallet, and try again.`);
-        proof = { message, signature: await signMessage(account, message) };
+        proof = { message, signature: await signChallenge(account, message, "destination", target) };
       }
       const created = await api<{ id: string; label: string; address: string }>("/api/destinations", { body: { id: newId("dst_"), label: label.trim() || "Wallet", address: target, ...proof } });
       actions.destinationAdded(created);

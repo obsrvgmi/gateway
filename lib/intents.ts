@@ -91,6 +91,63 @@ export function verifyQuoteSignature(response: SignedQuote, publicKey: string = 
   }
 }
 
+export interface ExpectedQuote {
+  /** Who is moving funds, and where a failed route returns them. */
+  owner: string;
+  recipient: string;
+  originAssetId: string;
+  destinationAssetId: string;
+  amount: string;
+}
+
+/**
+ * A signature on a dry quote doesn't cover any deposit address, so it proves nothing about where funds
+ * go. Only a live quote's does. And a valid signature only says the provider issued this quote, so every
+ * field must still match what the merchant chose. Returns the reason it was refused, or null.
+ */
+function checkQuoteFields(response: SignedQuote, expected: ExpectedQuote): string | null {
+  const request = response.quoteRequest;
+  if (request.dry !== false) return "This isn't a live quote.";
+  if (typeof response.quote.depositAddress !== "string" || !response.quote.depositAddress) return "This quote has no routing address.";
+  if (request.recipient !== expected.recipient) return "This quote pays a different address than the one shown.";
+  if (request.recipientType !== "DESTINATION_CHAIN") return "This quote doesn't pay out to the chain shown.";
+  if (typeof request.refundTo !== "string" || request.refundTo.toLowerCase() !== expected.owner.toLowerCase()) return "This quote returns funds to someone else if it fails.";
+  if (request.originAsset !== expected.originAssetId) return "This quote moves a different asset.";
+  if (request.destinationAsset !== expected.destinationAssetId) return "This quote pays out in a different asset.";
+  if (request.swapType !== "EXACT_INPUT" || request.amount !== expected.amount) return "This quote moves a different amount.";
+  return null;
+}
+
+/** A move out of an Intents balance, signed as an intent. */
+export function checkIntentQuote(response: SignedQuote, expected: ExpectedQuote): string | null {
+  if (response.quoteRequest.depositType !== "INTENTS" || response.quoteRequest.refundType !== "INTENTS") return "This quote doesn't draw on your balance.";
+  return checkQuoteFields(response, expected);
+}
+
+/** A refund the merchant sends from their wallet to a deposit address. */
+export function checkRouteQuote(response: SignedQuote, expected: ExpectedQuote): string | null {
+  if (response.quoteRequest.depositType !== "ORIGIN_CHAIN" || response.quoteRequest.refundType !== "ORIGIN_CHAIN") return "This quote isn't a deposit from your wallet.";
+  return checkQuoteFields(response, expected);
+}
+
+export type ChallengeAction = "settlement" | "destination";
+
+export function walletChallengeBody(action: ChallengeAction, orgId: string, address: string, issuedAt: string) {
+  const line = action === "settlement" ? `Make ${address} the settlement wallet` : `Allow payouts to ${address}`;
+  return `Gateway account action\n\n${line}\nWorkspace: ${orgId}\nIssued: ${issuedAt}`;
+}
+
+/**
+ * `personal_sign` signs any text, and an Intents account accepts a signed `add_public_key` the same way,
+ * so one signature on the wrong text would give away the balance for good. The browser only signs a
+ * challenge that says exactly this, and names the address the merchant is looking at.
+ */
+export function isWalletChallenge(message: string, action: ChallengeAction, address: string): boolean {
+  const match = /^Gateway account action\n\n([^\n]+)\nWorkspace: (org_[a-z0-9]+)\nIssued: (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\nCode: [0-9a-f]{32}$/.exec(message);
+  if (!match) return false;
+  return match[1] === (action === "settlement" ? `Make ${address} the settlement wallet` : `Allow payouts to ${address}`);
+}
+
 export interface ExpectedTransfer {
   signer: string;
   /** The deposit address from a verified quote. */

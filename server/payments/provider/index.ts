@@ -19,7 +19,7 @@ export function provider(): SwapProvider {
   const mode = paymentsMode();
   if (cached?.mode === mode) return cached.provider;
   const config = env();
-  if (config.PAYMENTS_MODE === "live" && mode !== "live") log("error", "PAYMENTS_MODE=live refused; running in test mode", { reasons: liveGateFailures(config) });
+  if (config.PAYMENTS_MODE === "live" && mode !== "live") log("error", "PAYMENTS_MODE=live refused; payments are stopped", { reasons: liveGateFailures(config) });
   const next: SwapProvider = mode === "live" ? new OneClickProvider({ baseUrl: config.ONECLICK_BASE_URL, apiKey: config.ONECLICK_API_KEY, nearRpcUrl: config.NEAR_RPC_URL }) : new SimProvider();
   cached = { mode, provider: next };
   return next;

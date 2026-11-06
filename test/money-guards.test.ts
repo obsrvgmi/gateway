@@ -10,7 +10,7 @@ import { provider, setProviderForTests } from "@/server/payments/provider";
 import type { QuoteResponse, StatusResponse, SwapProvider, TokenInfo } from "@/server/payments/provider/types";
 import { signSimQuote, SimProvider } from "@/server/payments/provider/sim";
 import { applyPaymentStatus } from "@/server/payments/poller";
-import { applyRefundStatus, prepareRefund } from "@/server/payments/refunds";
+import { applyRefundStatus, prepareRefund, recordRefundDeposit } from "@/server/payments/refunds";
 import { loadSource, payOptions } from "@/server/payments/source";
 import { resetTokenCache } from "@/server/payments/tokens";
 import { setSettlementWallet, issueChallenge } from "@/server/payments/wallet";
@@ -43,9 +43,21 @@ const quote = (overrides: Partial<QuoteResponse["quote"]>): QuoteResponse["quote
 
 describe("a quote that costs the customer too much", () => {
   it("is refused above the premium limit", () => {
-    expect(() => assertQuoteReasonable(100, quote({ amountInUsd: "108.5" }))).toThrow();
-    expect(() => assertQuoteReasonable(100, quote({ amountInUsd: "not-a-number" }))).toThrow();
-    expect(() => assertQuoteReasonable(100, quote({ amountInUsd: "101.3" }))).not.toThrow();
+    expect(() => assertQuoteReasonable(100, quote({ amountInUsd: "108.5", amountOutUsd: "100" }))).toThrow();
+    expect(() => assertQuoteReasonable(100, quote({ amountInUsd: "not-a-number", amountOutUsd: "100" }))).toThrow();
+    expect(() => assertQuoteReasonable(100, quote({ amountInUsd: "101.3", amountOutUsd: "99.9" }))).not.toThrow();
+  });
+});
+
+describe("a quote that would leave the merchant short", () => {
+  it("is refused when the customer would pay far below the price, a sign a price is wrong", () => {
+    expect(() => assertQuoteReasonable(100, quote({ amountInUsd: "1", amountOutUsd: "100" }))).toThrow(/looks wrong/);
+    expect(() => assertQuoteReasonable(100, quote({ amountInUsd: "96", amountOutUsd: "100" }))).toThrow(/looks wrong/);
+  });
+
+  it("is refused when it would deliver far below the price", () => {
+    expect(() => assertQuoteReasonable(100, quote({ amountInUsd: "101", amountOutUsd: "1" }))).toThrow(/looks wrong/);
+    expect(() => assertQuoteReasonable(100, quote({ amountInUsd: "101", amountOutUsd: "x" }))).toThrow(/looks wrong/);
   });
 });
 
@@ -172,14 +184,39 @@ describe("what a widget accepts", () => {
   });
 });
 
-describe("refunds across a wallet change", () => {
-  it("won't ask the new wallet to spend what the old one holds", async () => {
+describe("across a wallet change", () => {
+  it("asks the wallet that holds the funds to sign a refund, not the new one", async () => {
     const { orgId, userId } = await createOrg({ walletAddress: wallet });
     const source = await loadSource(await createLink(orgId));
     const session = await createSession(source, { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: key() });
     await applyPaymentStatus(session.id, status("SUCCESS", { amountOut: "50000000" }));
+    await db().insert(schema.simBalances).values({ account: wallet, assetId: ASSETS.USDC.assetId, amount: "50000000" }).onConflictDoUpdate({ target: [schema.simBalances.account, schema.simBalances.assetId], set: { amount: "50000000" } });
     await db().update(schema.organizations).set({ walletAddress: next.address.toLowerCase() }).where(eq(schema.organizations.id, orgId));
-    await expect(prepareRefund({ orgId, paymentId: session.id, userId })).rejects.toMatchObject({ code: "refund_other_wallet" });
+    const prepared = await prepareRefund({ orgId, paymentId: session.id, userId });
+    if (prepared.kind !== "intent") throw new Error("expected an intent refund");
+    expect(prepared.signer).toBe(wallet);
+  });
+
+  it("tells the merchant when a payment lands in their previous wallet", async () => {
+    const { orgId } = await createOrg({ walletAddress: wallet });
+    const source = await loadSource(await createLink(orgId));
+    const session = await createSession(source, { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: key() });
+    await db().update(schema.organizations).set({ walletAddress: next.address.toLowerCase() }).where(eq(schema.organizations.id, orgId));
+    await applyPaymentStatus(session.id, status("SUCCESS", { amountOut: "50000000" }));
+    expect((await db().select().from(schema.outbox).where(eq(schema.outbox.orgId, orgId))).map((event) => event.type)).toContain("alert.previous_wallet");
+  });
+
+  it("ends the countdown on open checkouts, which would still pay the old wallet", async () => {
+    const { orgId, userId } = await createOrg({ walletAddress: wallet });
+    const source = await loadSource(await createLink(orgId));
+    const session = await createSession(source, { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: key() });
+    await db().insert(schema.simBalances).values({ account: wallet, assetId: ASSETS.USDC.assetId, amount: "0" }).onConflictDoUpdate({ target: [schema.simBalances.account, schema.simBalances.assetId], set: { amount: "0" } });
+    const target = next.address.toLowerCase();
+    const message = issueChallenge("settlement", orgId, target);
+    await setSettlementWallet({ orgId, userId, wallet: target, message, newSignature: await next.signMessage({ message }), currentSignature: await merchant.signMessage({ message }) });
+    const row = await applyPaymentStatus(session.id, status("PENDING_DEPOSIT"));
+    expect(row?.state).toBe("expired");
+    expect(row?.nextPollAt).not.toBeNull();
   });
 });
 
@@ -232,6 +269,47 @@ describe("a direct-mode refund nobody funded", () => {
     await applyRefundStatus(first.id, status("PROCESSING"));
     await applyRefundStatus(first.id, status("SUCCESS"));
     expect((await paymentById(paymentId)).refundedBase).toBe("20000000");
+  });
+
+  it("doesn't offer an address close to its deadline again, where funds may be lost", async () => {
+    const { orgId, userId, paymentId } = await settledDirect();
+    const first = await prepareRefund({ orgId, paymentId, userId });
+    const stored = await refundById(first.id);
+    const quote = stored.quote as QuoteResponse;
+    quote.quote.deadline = new Date(Date.now() + 3_600_000).toISOString();
+    await db().update(schema.refunds).set({ quote }).where(eq(schema.refunds.id, first.id));
+    const second = await prepareRefund({ orgId, paymentId, userId });
+    expect(second.id).not.toBe(first.id);
+    expect((await refundById(first.id)).state).toBe("abandoned");
+  });
+
+  it("can't open two under overlapping requests", async () => {
+    const { orgId, userId, paymentId } = await settledDirect();
+    const results = await Promise.allSettled(Array.from({ length: 4 }, () => prepareRefund({ orgId, paymentId, userId })));
+    const opened = await db().select().from(schema.refunds).where(eq(schema.refunds.paymentId, paymentId));
+    expect(opened.filter((row) => row.state === "awaiting_deposit").length).toBe(1);
+    const ids = new Set(results.flatMap((result) => (result.status === "fulfilled" ? [result.value.id] : [])));
+    expect(ids.size).toBe(1);
+    expect(ids.has(opened.find((row) => row.state === "awaiting_deposit")?.id as string)).toBe(true);
+  });
+
+  it("remembers the merchant sent it, and never offers a second send, or replaces it", async () => {
+    const { orgId, userId, paymentId } = await settledDirect();
+    const first = await prepareRefund({ orgId, paymentId, userId });
+    await recordRefundDeposit({ orgId, refundId: first.id, txHash: "0xmerchant" });
+    const again = await prepareRefund({ orgId, paymentId, userId });
+    if (again.kind !== "route") throw new Error("expected a route refund");
+    expect(again.id).toBe(first.id);
+    expect(again.depositTxHash).toBe("0xmerchant");
+    await db().update(schema.refunds).set({ createdAt: new Date(Date.now() - 3_600_000) }).where(eq(schema.refunds.id, first.id));
+    await expect(prepareRefund({ orgId, paymentId, amountBase: "1000000", userId })).rejects.toMatchObject({ code: "refund_open" });
+  });
+
+  it("can't record a deposit on another workspace's refund", async () => {
+    const { orgId, userId, paymentId } = await settledDirect();
+    const first = await prepareRefund({ orgId, paymentId, userId });
+    const other = await createOrg();
+    await expect(recordRefundDeposit({ orgId: other.orgId, refundId: first.id, txHash: "0xother" })).rejects.toMatchObject({ status: 404 });
   });
 
   it("closes itself well after the provider's deadline, and not before", async () => {

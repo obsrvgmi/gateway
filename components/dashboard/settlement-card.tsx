@@ -9,7 +9,8 @@ import { toast } from "@/components/base/toast/toast";
 import { api, errorMessage } from "@/lib/api";
 import { refresh, useGateway } from "@/lib/store";
 import type { SettlementMode } from "@/lib/types";
-import { connectWallet, signMessage } from "@/lib/wallet";
+import { signChallenge } from "@/lib/sign-intent";
+import { connectWallet } from "@/lib/wallet";
 import { Panel } from "./ui";
 
 /** One step per wallet: a browser wallet signs with whichever account is selected, so the person switches between them. */
@@ -32,7 +33,7 @@ function ChangeWallet({ current, isOpen, onClose }: { current: string | null; is
       const wallet = await connectWallet();
       if (wallet === current) throw new Error("That's already your settlement wallet. Select the new account in your wallet.");
       const { message } = await api<{ message: string }>("/api/wallet/challenge", { body: { action: "settlement", address: wallet } });
-      const newSignature = await signMessage(wallet, message);
+      const newSignature = await signChallenge(wallet, message, "settlement", wallet);
       if (current) {
         setDraft({ wallet, message, newSignature });
         setStep("current");
@@ -52,7 +53,7 @@ function ChangeWallet({ current, isOpen, onClose }: { current: string | null; is
     try {
       const account = await connectWallet();
       if (account !== current) throw new Error(`Select ${current} in your wallet to confirm this change.`);
-      await save({ ...draft, currentSignature: await signMessage(account, draft.message) });
+      await save({ ...draft, currentSignature: await signChallenge(account, draft.message, "settlement", draft.wallet) });
     } catch (error) {
       toast.error("Wallet not changed", { description: errorMessage(error) });
     } finally {

@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { api, errorMessage } from "@/lib/api";
+import { safeNextPath } from "@/lib/safe-next";
 import { AuthCard } from "./auth-card";
 
 export function LoginForm() {
@@ -22,8 +23,8 @@ export function LoginForm() {
     try {
       await api("/api/auth/request-link", { body: { email } });
       // Where to go after the link is opened survives in this browser.
-      const next = params.get("next");
-      if (next?.startsWith("/") && !next.startsWith("//")) window.sessionStorage.setItem("gateway:next", next);
+      const next = safeNextPath(params.get("next"), window.location.origin);
+      if (next) window.sessionStorage.setItem("gateway:next", next);
       setSent(true);
     } catch (failure) {
       setError(errorMessage(failure));

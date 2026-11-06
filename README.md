@@ -156,7 +156,7 @@ npm start             # the production web server
 npm run lint
 npm run typecheck     # route types, then tsc
 npm test              # unit and integration, on real Postgres
-npm run test:e2e      # browser tests. Run the build first
+npm run test:e2e      # browser tests. First: NEXT_PUBLIC_TEST_BUILD=true npm run build
 npm run test:live     # our guards against the real NEAR API. Sends no funds
 npm run test:mutation # deletes each money guard and checks a test fails
 ```

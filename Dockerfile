@@ -8,6 +8,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
+# Set true only for a staging image that runs in test mode. Production leaves it unset, so the browser
+# only ever trusts NEAR's own signing key.
+ARG NEXT_PUBLIC_TEST_BUILD=
+ENV NEXT_PUBLIC_TEST_BUILD=$NEXT_PUBLIC_TEST_BUILD
 RUN npm run build
 
 FROM node:22-slim

@@ -1,18 +1,25 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { embedFrameAncestors } from "@/server/embed-policy";
 
 const SESSION_COOKIE = "gw_session";
 
 /**
- * An optimistic redirect only, from the presence of the cookie. Every API route checks the session
- * and the role for itself, so nothing is protected by this file.
+ * Two things. An optimistic redirect from the presence of the cookie: every API route checks the session
+ * and the role for itself, so nothing is protected by that. And which sites may frame a widget, the one
+ * response header that depends on stored data.
  */
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
+  const { pathname, search } = request.nextUrl;
+  if (pathname.startsWith("/embed/")) {
+    const response = NextResponse.next();
+    response.headers.set("Content-Security-Policy", await embedFrameAncestors(pathname.slice("/embed/".length)));
+    return response;
+  }
   if (request.cookies.has(SESSION_COOKIE)) return NextResponse.next();
   const url = request.nextUrl.clone();
-  const next = `${url.pathname}${url.search}`;
   url.pathname = "/login";
-  url.search = `?next=${encodeURIComponent(next)}`;
+  url.search = `?next=${encodeURIComponent(`${pathname}${search}`)}`;
   return NextResponse.redirect(url);
 }
 
-export const config = { matcher: ["/dashboard/:path*", "/onboarding"] };
+export const config = { matcher: ["/dashboard/:path*", "/onboarding", "/embed/:path*"] };

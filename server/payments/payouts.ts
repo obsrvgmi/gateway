@@ -169,13 +169,18 @@ export async function submitPayout(input: { orgId: string; payoutId: string; sig
 
   try {
     const { intentHash } = await provider().submitIntent({ payload, signature: encoded });
-    const [updated] = await db().update(schema.payouts).set({ state: "processing", intentHash, nextPollAt: new Date(Date.now() + 5_000), updatedAt: new Date() }).where(eq(schema.payouts.id, row.id)).returning();
-    return updated;
+    // Only from `submitting`: the poller may have seen it finish while this response was on its way.
+    const [updated] = await db().update(schema.payouts).set({ state: "processing", intentHash, nextPollAt: new Date(Date.now() + 5_000), updatedAt: new Date() }).where(and(eq(schema.payouts.id, row.id), eq(schema.payouts.state, "submitting"))).returning();
+    if (updated) return updated;
+    const [current] = await db().select().from(schema.payouts).where(eq(schema.payouts.id, row.id)).limit(1);
+    return current;
   } catch (error) {
     if (error instanceof ProviderRejected) {
-      const [updated] = await db().update(schema.payouts).set({ state: "failed", failureReason: error.message, nextPollAt: null, updatedAt: new Date() }).where(eq(schema.payouts.id, row.id)).returning();
-      await emit(db(), row.orgId, "payout.failed", { id: row.id, reason: error.message });
-      return updated;
+      // The first send, refused outright, so nothing can have gone. A refused resend proves nothing: see `resendIfStuck`.
+      const [updated] = await db().update(schema.payouts).set({ state: "failed", failureReason: error.message, nextPollAt: null, updatedAt: new Date() }).where(and(eq(schema.payouts.id, row.id), eq(schema.payouts.state, "submitting"))).returning();
+      if (updated) await emit(db(), row.orgId, "payout.failed", { id: row.id, reason: error.message });
+      const [current] = await db().select().from(schema.payouts).where(eq(schema.payouts.id, row.id)).limit(1);
+      return current;
     }
     // Unknown outcome: it may have gone through. Stay `submitting`, and let the poller find out.
     log("warn", "payout submit outcome unknown", { payoutId: row.id, error });
@@ -185,6 +190,7 @@ export async function submitPayout(input: { orgId: string; payoutId: string; sig
 }
 
 const toIntentState = (state: string): IntentState => (state === "sent" ? "done" : (state as IntentState));
+const WATCH_FAILED_MS = 86_400_000;
 
 export async function applyPayoutStatus(payoutId: string, status: StatusResponse, now = new Date()) {
   return db().transaction(async (tx) => {
@@ -196,6 +202,8 @@ export async function applyPayoutStatus(payoutId: string, status: StatusResponse
     if (status.swapDetails.destinationChainTxHashes.length) patch.destinationTxHashes = status.swapDetails.destinationChainTxHashes;
     if (status.swapDetails.amountOut) patch.receiveBase = status.swapDetails.amountOut;
 
+    const age = now.getTime() - row.createdAt.getTime();
+    const signedDeadline = row.intent ? Date.parse((JSON.parse(payloadOf(row)) as { deadline: string }).deadline) : Number.NaN;
     if (next === "done") {
       patch.state = "sent";
       patch.completedAt = now;
@@ -204,47 +212,57 @@ export async function applyPayoutStatus(payoutId: string, status: StatusResponse
     } else if (next === "failed") {
       patch.state = "failed";
       patch.failureReason = status.swapDetails.refundReason ?? "The route couldn't complete this payout. The funds stayed in your balance.";
-      // A failure can still be corrected by a late success, so keep looking for a while.
-      patch.nextPollAt = now.getTime() - row.createdAt.getTime() < 86_400_000 ? new Date(now.getTime() + 300_000) : null;
+      // FAILED isn't REFUNDED: it may yet go through, so it stays reserved and watched for a day.
+      patch.nextPollAt = status.status === "FAILED" && age < WATCH_FAILED_MS ? new Date(now.getTime() + 300_000) : null;
       if (current !== "failed") await emit(tx, row.orgId, "payout.failed", { id: row.id, reason: patch.failureReason });
+    } else if ((row.state === "submitting" || row.state === "processing") && status.status === "PENDING_DEPOSIT" && now.getTime() > signedDeadline) {
+      // Past its signed deadline with nothing seen: the verifier can't execute it now, so the funds are free.
+      patch.state = "failed";
+      patch.failureReason = "This payout expired before the route accepted it. The funds stayed in your balance.";
+      patch.nextPollAt = null;
+      await emit(tx, row.orgId, "payout.failed", { id: row.id, reason: patch.failureReason });
     } else {
       if (next === "processing") patch.state = "processing";
-      const state = (next ?? current) as string;
-      const delay = state === "failed" ? null : nextPollDelayMs({ state: "processing", now: now.getTime(), createdAt: row.createdAt.getTime(), deadline: null, failures: 0 });
-      patch.nextPollAt = delay === null ? null : new Date(now.getTime() + delay);
+      if ((next ?? current) === "failed") {
+        patch.nextPollAt = age < WATCH_FAILED_MS ? new Date(now.getTime() + 300_000) : null;
+      } else {
+        const delay = nextPollDelayMs({ state: "processing", now: now.getTime(), createdAt: row.createdAt.getTime(), deadline: null, failures: 0 });
+        patch.nextPollAt = delay === null ? null : new Date(now.getTime() + delay);
+      }
     }
     const [updated] = await tx.update(schema.payouts).set(patch).where(eq(schema.payouts.id, payoutId)).returning();
     return updated;
   });
 }
 
-/** Unknown outcome earlier: resending the same signed intent is safe, because its nonce is single-use. */
-async function resendIfStuck(row: { id: string; state: string; intent: unknown; signature: string | null }, status: StatusResponse) {
+const RESEND_EVERY_MS = 60_000;
+
+/**
+ * Unknown outcome earlier: resending the same signed intent is safe, because its nonce is single-use. A
+ * refusal here proves nothing, since it's what a duplicate of a send that landed would get. So it stays
+ * reserved until the status says otherwise or the signed deadline passes.
+ */
+async function resendIfStuck(row: { id: string; state: string; intent: unknown; signature: string | null; submit_attempted_at: Date | string | null }, status: StatusResponse) {
   if (row.state !== "submitting" || status.status !== "PENDING_DEPOSIT" || !row.signature) return;
-  // Past the signed deadline the verifier would refuse it anyway, so the reservation can be released.
-  const deadline = Date.parse((JSON.parse(payloadOf(row)) as { deadline: string }).deadline);
-  if (Date.now() > deadline) {
-    await db().update(schema.payouts).set({ state: "failed", failureReason: "This payout expired before the route accepted it. The funds stayed in your balance.", nextPollAt: null, updatedAt: new Date() }).where(and(eq(schema.payouts.id, row.id), eq(schema.payouts.state, "submitting")));
-    return;
-  }
+  if (row.submit_attempted_at && Date.now() - new Date(row.submit_attempted_at).getTime() < RESEND_EVERY_MS) return;
+  if (Date.now() > Date.parse((JSON.parse(payloadOf(row)) as { deadline: string }).deadline)) return;
+  await db().update(schema.payouts).set({ submitAttemptedAt: new Date() }).where(eq(schema.payouts.id, row.id));
   try {
     const { intentHash } = await provider().submitIntent({ payload: payloadOf(row), signature: row.signature });
     await db().update(schema.payouts).set({ state: "processing", intentHash, updatedAt: new Date() }).where(and(eq(schema.payouts.id, row.id), eq(schema.payouts.state, "submitting")));
   } catch (error) {
-    if (error instanceof ProviderRejected) {
-      await db().update(schema.payouts).set({ state: "failed", failureReason: error.message, nextPollAt: null, updatedAt: new Date() }).where(and(eq(schema.payouts.id, row.id), eq(schema.payouts.state, "submitting")));
-    }
+    log("warn", "payout resend refused", { payoutId: row.id, error });
   }
 }
 
 export async function pollDuePayouts(limit = 25) {
-  const claimed = await db().execute<{ id: string; state: string; intent: unknown; signature: string | null; deposit_address: string; deposit_memo: string | null; poll_failures: number }>(sql`
+  const claimed = await db().execute<{ id: string; state: string; intent: unknown; signature: string | null; submit_attempted_at: Date | string | null; deposit_address: string; deposit_memo: string | null; poll_failures: number }>(sql`
     update payouts set next_poll_at = now() + interval '60 seconds'
     where id in (
       select id from payouts where next_poll_at is not null and next_poll_at <= now() and deposit_address is not null and live = ${provider().kind === "oneclick"}
       order by next_poll_at limit ${limit} for update skip locked
     )
-    returning id, state, intent, signature, deposit_address, deposit_memo, poll_failures
+    returning id, state, intent, signature, submit_attempted_at, deposit_address, deposit_memo, poll_failures
   `);
   await Promise.all(
     claimed.rows.map(async (row) => {

@@ -12,6 +12,7 @@ const LABEL: Record<string, string> = {
   ok: "All systems running",
   worker_stalled: "Payments are delayed. Funds are safe, and tracking catches up when this clears.",
   database_unavailable: "We're having a problem. Funds are safe, because we never hold them.",
+  live_refused: "Payments are unavailable right now. Funds are safe, because we never hold them.",
 };
 
 export function StatusView() {

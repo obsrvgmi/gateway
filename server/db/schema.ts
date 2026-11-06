@@ -18,6 +18,8 @@ export const users = pgTable("users", {
 export const loginTokens = pgTable("login_tokens", {
   tokenHash: text("token_hash").primaryKey(),
   email: text("email").notNull(),
+  /** Ties the link to the browser that asked for it. Opening it anywhere else needs a confirmation. */
+  nonceHash: text("nonce_hash"),
   expiresAt: at("expires_at").notNull(),
   usedAt: at("used_at"),
   createdAt: createdAt(),
@@ -194,6 +196,8 @@ export const payments = pgTable(
     providerRefundedBase: base("provider_refunded_base"),
     providerRefundReason: text("provider_refund_reason"),
     failureReason: text("failure_reason"),
+    /** The customer's own transaction, if their browser sent it. Stops a reload offering a second send. */
+    clientTxHash: text("client_tx_hash"),
     settleSeconds: integer("settle_seconds"),
     /** The refunded amount in `receiveAsset` base units, summed from completed refunds. */
     refundedBase: base("refunded_base").notNull().default("0"),
@@ -321,6 +325,8 @@ export const refunds = pgTable(
     signExpiresAt: at("sign_expires_at"),
     providerStatus: text("provider_status"),
     txHash: text("tx_hash"),
+    /** The merchant's own transaction on a route refund. Stops reopening it offering a second send. */
+    depositTxHash: text("deposit_tx_hash"),
     failureReason: text("failure_reason"),
     requestedBy: text("requested_by"),
     live: boolean("live").notNull().default(false),
@@ -331,7 +337,13 @@ export const refunds = pgTable(
     completedAt: at("completed_at"),
     updatedAt: at("updated_at").notNull().defaultNow(),
   },
-  (table) => [index("refunds_org_idx").on(table.orgId), index("refunds_payment_idx").on(table.paymentId), index("refunds_poll_idx").on(table.nextPollAt).where(sql`${table.nextPollAt} is not null`)],
+  (table) => [
+    index("refunds_org_idx").on(table.orgId),
+    index("refunds_payment_idx").on(table.paymentId),
+    index("refunds_poll_idx").on(table.nextPollAt).where(sql`${table.nextPollAt} is not null`),
+    // The database's own guarantee: overlapping requests can't open two refunds on one payment.
+    uniqueIndex("refunds_one_open_idx").on(table.paymentId).where(sql`${table.state} in ('awaiting_deposit', 'submitting', 'processing')`),
+  ],
 );
 
 export const apiKeys = pgTable(

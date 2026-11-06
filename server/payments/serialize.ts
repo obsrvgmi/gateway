@@ -13,6 +13,7 @@ export function toPayment(row: PaymentRow): Payment {
   const state = row.state as PaymentState;
   const detail: PaymentDetail = {
     state,
+    direct: row.recipientType === "DESTINATION_CHAIN",
     depositAddress: row.depositAddress,
     depositedAt: row.depositSeenAt?.toISOString() ?? null,
     settledAt: row.settledAt?.toISOString() ?? null,

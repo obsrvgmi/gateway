@@ -27,18 +27,30 @@ const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a six-digit hex colo
 /** Raster images only. An SVG data URL can carry script. */
 const logoDataUrl = z.string().max(120_000).refine((value) => value === "" || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value), "Logo must be a PNG, JPEG or WebP image.");
 
-export const linkFields = z.object({
+/**
+ * The shape with no defaults. Zod keeps `.default()` through `.partial()`, so a patch built on a schema
+ * with defaults would write them for every field left out: one `{ title }` would reopen a paused link
+ * and blank its description.
+ */
+const linkShape = z.object({
   title: z.string().trim().min(1, "Enter a title.").max(200),
-  description: z.string().trim().max(1000).default(""),
+  description: z.string().trim().max(1000),
   amount: usdAmount.nullable(),
   receiveAsset: receiveSymbol,
-  status: z.enum(["active", "paused", "expired"]).default("active"),
-  expiresAt: isoDate.nullable().default(null),
-  successUrl: webUrl.default(""),
+  status: z.enum(["active", "paused", "expired"]),
+  expiresAt: isoDate.nullable(),
+  successUrl: webUrl,
+});
+
+export const linkFields = linkShape.extend({
+  description: linkShape.shape.description.default(""),
+  status: linkShape.shape.status.default("active"),
+  expiresAt: linkShape.shape.expiresAt.default(null),
+  successUrl: linkShape.shape.successUrl.default(""),
 });
 
 export const linkCreate = linkFields.extend({ id: clientId("lnk_").optional() });
-export const linkPatch = linkFields.partial();
+export const linkPatch = linkShape.partial();
 
 const widgetSuccess = z.object({
   mode: z.enum(["receipt", "message", "redirect"]),
@@ -46,27 +58,42 @@ const widgetSuccess = z.object({
   url: webUrl,
 });
 
-export const widgetFields = z.object({
+/** A bare host, because it goes into a Content-Security-Policy header. A pasted URL is cut down to its host. */
+export const siteHost = z.string().trim().toLowerCase().max(253).transform((value) => value.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "")).refine((value) => value === "" || /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d{1,5})?$/.test(value), "Enter a site like shop.example.com.");
+
+const widgetShape = z.object({
   name: z.string().trim().min(1, "Enter a name.").max(200),
-  site: z.string().trim().max(253).default(""),
-  status: z.enum(["live", "paused"]).default("live"),
-  theme: z.enum(["light", "dark", "auto"]).default("auto"),
+  site: siteHost,
+  status: z.enum(["live", "paused"]),
+  theme: z.enum(["light", "dark", "auto"]),
   accent: hexColor,
-  radius: z.enum(["rounded", "soft", "sharp"]).default("rounded"),
+  radius: z.enum(["rounded", "soft", "sharp"]),
   amount: usdAmount.nullable(),
   receiveAsset: receiveSymbol,
   buttonLabel: z.string().trim().min(1).max(60),
-  showBranding: z.boolean().default(true),
+  showBranding: z.boolean(),
   acceptedAssets: z.array(assetSymbol).min(1, "Accept at least one asset.").max(ASSET_SYMBOLS.length),
-  presets: z.array(usdAmount).max(6).default([]),
-  displayName: z.string().trim().max(120).default(""),
-  logo: logoDataUrl.default(""),
-  collectEmail: z.boolean().default(false),
+  presets: z.array(usdAmount).max(6),
+  displayName: z.string().trim().max(120),
+  logo: logoDataUrl,
+  collectEmail: z.boolean(),
   success: widgetSuccess,
 });
 
+export const widgetFields = widgetShape.extend({
+  site: widgetShape.shape.site.default(""),
+  status: widgetShape.shape.status.default("live"),
+  theme: widgetShape.shape.theme.default("auto"),
+  radius: widgetShape.shape.radius.default("rounded"),
+  showBranding: widgetShape.shape.showBranding.default(true),
+  presets: widgetShape.shape.presets.default([]),
+  displayName: widgetShape.shape.displayName.default(""),
+  logo: widgetShape.shape.logo.default(""),
+  collectEmail: widgetShape.shape.collectEmail.default(false),
+});
+
 export const widgetCreate = widgetFields.extend({ id: clientId("wgt_").optional() });
-export const widgetPatch = widgetFields.partial();
+export const widgetPatch = widgetShape.partial();
 
 export const settingsPatch = z.object({
   businessName: z.string().trim().min(1).max(120),

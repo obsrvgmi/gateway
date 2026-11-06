@@ -1,5 +1,5 @@
 {
-  "id": "1b7e7b55-c7bc-457a-a0dc-4c690d9dd996",
+  "id": "92a4257d-029d-4824-92ea-b3a5ab9d669f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -503,6 +503,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "nonce_hash": {
+          "name": "nonce_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "expires_at": {
           "name": "expires_at",
@@ -1339,6 +1345,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "client_tx_hash": {
+          "name": "client_tx_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "settle_seconds": {
           "name": "settle_seconds",
           "type": "integer",
@@ -2017,6 +2029,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "deposit_tx_hash": {
+          "name": "deposit_tx_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "failure_reason": {
           "name": "failure_reason",
           "type": "text",
@@ -2119,6 +2137,22 @@
           ],
           "isUnique": false,
           "where": "\"refunds\".\"next_poll_at\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "refunds_one_open_idx": {
+          "name": "refunds_one_open_idx",
+          "columns": [
+            {
+              "expression": "payment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"refunds\".\"state\" in ('awaiting_deposit', 'submitting', 'processing')",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -21,19 +21,29 @@ const jobs: Job[] = [
   { name: "webhooks", everyMs: 2_000, run: deliverDueWebhooks },
   { name: "scheduled-payouts", everyMs: 5 * MINUTE, run: promptScheduledPayouts },
   { name: "expiring-links", everyMs: 60 * MINUTE, run: noticeExpiringLinks },
-  { name: "sanctions", everyMs: 24 * 60 * MINUTE, run: refreshSanctionsList },
+  { name: "sanctions", everyMs: 24 * 60 * MINUTE, run: () => refreshSanctionsList() },
   { name: "stuck", everyMs: 60 * MINUTE, run: reportStuck },
   { name: "purge", everyMs: 60 * MINUTE, run: purgeExpired },
 ];
 
 let stopping = false;
 
+/** A run that never returns must not stop the job forever. Its work is leased, so it gets picked up again. */
+const JOB_LIMIT_MS = 120_000;
+const withLimit = (run: Promise<unknown>) => {
+  let timer: NodeJS.Timeout | undefined;
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Still running after ${JOB_LIMIT_MS / 1000}s`)), JOB_LIMIT_MS);
+  });
+  return Promise.race([run, limit]).finally(() => clearTimeout(timer));
+};
+
 /** Each job runs on its own schedule and never overlaps itself. A failure is logged and retried next tick. */
 function start(job: Job) {
   const loop = async () => {
     if (stopping) return;
     try {
-      await job.run();
+      await withLimit(job.run());
       await beat(job.name);
     } catch (error) {
       log("error", "job failed", { job: job.name, error });

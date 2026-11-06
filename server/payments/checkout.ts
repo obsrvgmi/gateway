@@ -23,6 +23,8 @@ import { tokenFor } from "./tokens";
 const SLIPPAGE_BPS = 100;
 /** A quote costing more than this above the merchant's price is not one a customer should see. */
 const MAX_PREMIUM = 0.08;
+/** Paying or delivering this far below the price means a price is wrong, and the merchant would be short. */
+const MAX_SHORTFALL = 0.03;
 
 /**
  * Valid-format addresses for a price preview only. Dry quotes can't issue an address, so no funds can
@@ -43,7 +45,9 @@ function appFees(): QuoteRequest["appFees"] {
 
 export function assertQuoteReasonable(usd: number, quote: QuoteResponse["quote"]) {
   const paying = Number(quote.amountInUsd);
+  const delivering = Number(quote.amountOutUsd);
   if (!Number.isFinite(paying) || paying > usd * (1 + MAX_PREMIUM)) throw new GuardError("quote_premium", "This route is too expensive right now. Choose another asset.");
+  if (paying < usd * (1 - MAX_SHORTFALL) || !Number.isFinite(delivering) || delivering < usd * (1 - MAX_SHORTFALL)) throw new GuardError("quote_shortfall", "This route's price looks wrong right now. Choose another asset.");
 }
 
 export function resolveAmount(source: Source, requested: number | null | undefined) {
@@ -266,6 +270,7 @@ export function publicSession(row: PaymentRow, source?: Source) {
     payBy: row.payBy?.toISOString() ?? null,
     deadline: row.deadline?.toISOString() ?? null,
     refundAddress: row.payer,
+    depositSubmitted: Boolean(row.clientTxHash),
     deposited: row.depositedBase ? baseToDecimal(row.depositedBase, pay.tokenDecimals) : null,
     returned: row.providerRefundedBase && row.providerRefundedBase !== "0" ? baseToDecimal(row.providerRefundedBase, pay.tokenDecimals) : null,
     returnReason: row.providerRefundReason,

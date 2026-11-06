@@ -82,6 +82,8 @@ export interface TxRef {
 
 export interface PaymentDetail {
   state: string;
+  /** Went straight to the merchant's wallet, with no balance step. */
+  direct: boolean;
   depositAddress: string | null;
   depositedAt: string | null;
   settledAt: string | null;

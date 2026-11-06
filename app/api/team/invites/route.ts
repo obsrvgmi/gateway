@@ -4,7 +4,7 @@ import { audit } from "@/server/audit";
 import { db, schema } from "@/server/db";
 import { sendEmail } from "@/server/email";
 import { env } from "@/server/env";
-import { conflict } from "@/server/http/errors";
+import { conflict, forbidden } from "@/server/http/errors";
 import { json, orgRoute, readJson } from "@/server/http/route";
 import { rateLimit } from "@/server/http/rate-limit";
 import { hashSecret, newId, newSecret } from "@/server/ids";
@@ -15,9 +15,10 @@ import { loadOrgRow } from "@/server/state";
 const INVITE_DAYS = 7;
 const body = z.object({ email, role: teamRole });
 
-export const POST = orgRoute("team:write", async (request, { orgId, userId, ip }) => {
+export const POST = orgRoute("team:write", async (request, { orgId, userId, role, ip }) => {
   await rateLimit(`invite:${orgId}`, 30, 3600);
   const input = await readJson(request, body);
+  if (input.role === "finance" && role !== "owner") throw forbidden("Only an owner can give someone access to money.");
   const [member] = await db().select({ id: schema.users.id }).from(schema.memberships).innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId)).where(and(eq(schema.memberships.orgId, orgId), eq(schema.users.email, input.email))).limit(1);
   if (member) throw conflict("This person is already on the team.");
   const token = newSecret();

@@ -9,6 +9,7 @@ export type PaymentState =
   | "incomplete_deposit"
   | "processing"
   | "settled"
+  | "underpaid"
   | "provider_refunded"
   | "failed"
   | "expired"
@@ -34,6 +35,7 @@ const PROGRESS: Partial<Record<PaymentState, number>> = {
   failed: 3,
   provider_refunded: 4,
   settled: 4,
+  underpaid: 4,
 };
 
 /**
@@ -51,21 +53,19 @@ export function nextPaymentState(current: PaymentState, status: ProviderStatus):
   const from = PROGRESS[current];
   const to = PROGRESS[target];
   if (from === undefined || to === undefined) return null;
-  if (current === "settled" || current === "provider_refunded") return null;
+  if (current === "settled" || current === "underpaid" || current === "provider_refunded") return null;
   // incomplete_deposit and deposit_seen rank equally: a top-up can move either way between them.
   return to >= from ? target : null;
 }
 
 /** The provider reached an outcome. A later second deposit is undocumented, so these are still looked at, slowly. */
-export const isFinalForProvider = (state: PaymentState) => state === "settled" || state === "provider_refunded" || state === "refund_pending" || state === "refunded";
+export const isFinalForProvider = (state: PaymentState) => state === "settled" || state === "underpaid" || state === "provider_refunded" || state === "refund_pending" || state === "refunded";
 
 /** No address was ever issued to anyone, so nothing can arrive. */
 export const isDeadOnArrival = (state: PaymentState) => state === "quote_failed";
 
 const DAY = 86_400_000;
 const LATE_TRACKING_DAYS = 30;
-/** Past this many straight provider errors for one address, a person needs to look, and polling stops. */
-export const MAX_POLL_FAILURES = 60;
 
 /**
  * When to look again, or null to stop. Fast while a customer is watching, then slower. An address that
@@ -73,21 +73,24 @@ export const MAX_POLL_FAILURES = 60;
  */
 export function nextPollDelayMs(input: { state: PaymentState; now: number; createdAt: number; deadline: number | null; failures: number }): number | null {
   const { state, now, createdAt, deadline, failures } = input;
-  if (isDeadOnArrival(state) || failures >= MAX_POLL_FAILURES) return null;
+  if (isDeadOnArrival(state)) return null;
   const lastDay = (deadline ?? createdAt) + LATE_TRACKING_DAYS * DAY;
-  if (failures > 0) return now > lastDay ? null : Math.min(30_000 * 2 ** Math.min(failures, 6), 1_800_000);
+  const moving = state === "deposit_seen" || state === "processing" || state === "incomplete_deposit" || state === "failed";
+  // However long the provider keeps failing, even a revoked key: once it's back, money in flight must still get an answer.
+  if (failures > 0) return !moving && now > lastDay ? null : Math.min(30_000 * 2 ** Math.min(failures, 6), 1_800_000);
   // Money in flight always gets an answer, so these never stop, however long the provider takes.
-  if (state === "deposit_seen" || state === "processing" || state === "incomplete_deposit") {
-    const inFlight = now - createdAt;
-    return inFlight < 3_600_000 ? 10_000 : inFlight < DAY ? 60_000 : 600_000;
+  if (moving) {
+    const age = now - createdAt;
+    return age < 3_600_000 ? 10_000 : age < DAY ? 60_000 : 600_000;
   }
   if (now > lastDay) return null;
   // A finished address is only checked for a second deposit reaching the provider.
   if (isFinalForProvider(state)) return 6 * 3_600_000;
   const age = now - createdAt;
   if (age < 3_600_000) return 10_000;
-  if (deadline !== null && now < deadline) return 60_000;
-  return 3_600_000;
+  // An abandoned checkout costs a request per poll for a month, so quiet addresses are asked rarely.
+  if (deadline !== null && now < deadline) return 300_000;
+  return 6 * 3_600_000;
 }
 
 /** A quiet payment is shown as expired once the customer's countdown is over. Moves on if money appears. */
@@ -108,6 +111,7 @@ export function dashboardStatus(state: PaymentState): PaymentStatus {
     case "failed":
     case "provider_refunded":
     case "quote_failed":
+    case "underpaid":
       return "failed";
     default:
       return "processing";
@@ -128,6 +132,7 @@ export function webhookEventFor(state: PaymentState): string | null {
       return "payment.expired";
     case "failed":
     case "provider_refunded":
+    case "underpaid":
       return "payment.failed";
     default:
       return null;

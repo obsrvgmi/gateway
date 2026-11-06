@@ -7,9 +7,9 @@ import { rateLimit } from "../http/rate-limit";
 
 /** Public endpoints have no login, so each is limited by address, and by source so one page can't be drained. */
 export async function limitCheckout(request: NextRequest, bucket: string, perIp: number, sourceId?: string) {
+  if (sourceId) return rateLimit(`checkout:${bucket}:src:${sourceId}`, perIp * 20, 60);
   const ip = clientIp(request);
   if (ip) await rateLimit(`checkout:${bucket}:ip:${ip}`, perIp, 60);
-  if (sourceId) await rateLimit(`checkout:${bucket}:src:${sourceId}`, perIp * 20, 60);
 }
 
 /** Only works where the CDN in front of the app reports a country. See `GEO_COUNTRY_HEADER`. */

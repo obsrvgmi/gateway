@@ -60,9 +60,9 @@ flowchart LR
 
 ### Payment state machine
 
-`quoting -> awaiting_deposit -> deposit_seen -> processing -> settled`, with `incomplete_deposit`, `provider_refunded`, `failed`, `expired`, and for merchant refunds `settled -> refund_pending -> refunded`.
+`quoting -> awaiting_deposit -> deposit_seen -> processing -> settled`, with `incomplete_deposit`, `provider_refunded`, `failed`, `expired`, `underpaid` (SUCCESS, but less arrived than was quoted), and for merchant refunds `settled -> refund_pending -> refunded`. SUCCESS with no amount isn't settled at all.
 
-- `expired` means the deadline passed with no deposit seen. It is **not final**: polling continues (hourly, for 30 days), and any later status moves the payment forward. `PENDING_DEPOSIT` never means "unpaid".
+- `expired` means the customer's countdown ended with no deposit seen. It is **not final**: polling continues (every 6 hours, for 30 days past the deadline), and any later status moves the payment forward. `PENDING_DEPOSIT` never means "unpaid".
 - No flow reissues a deposit address automatically. Starting over is an explicit customer action with an "if you already sent funds, do not send again" warning, and old addresses stay tracked.
 - Each transition appends a `payment_events` row and an outbox row in one transaction. Transitions are a pure, tested function of (current state, provider status).
 - Provider errors never change state. They back off and raise an alert after repeated failure.
@@ -90,7 +90,7 @@ Balance is read from `intents.near` `mt_batch_balance_of` for the merchant's acc
 
 Changing the settlement wallet redirects all future money, so a stolen session must not be able to do it at all. It requires an owner, a signature from the new wallet, and a signature from the current wallet, with no timed fallback an attacker could wait out. The old wallet's balance must be empty and nothing may be in flight to it, because balances belong to a key. Owners are emailed. A merchant who lost their key goes through a manual process; see the operations runbook.
 
-Payout destinations other than the wallet itself need the settlement wallet's signature too. It's checked again before each payout, so it stops being valid if the wallet changes. Because the wallet only ever sees a transfer to a routing address, the browser verifies 1Click's signature and that the signed `recipient` is the destination shown before asking the wallet to sign. This protects merchants from a compromised Gateway server on the payout path. A compromised server could still change `recipient` on new customer quotes, because customers can't verify it. That risk is disclosed in the Known limits.
+Payout destinations other than the wallet itself need the settlement wallet's signature too. It's checked again before each payout, so it stops being valid if the wallet changes. Because the wallet only ever sees a transfer to a routing address, the browser verifies 1Click's signature, that it's a live quote (a dry quote's signature covers no address), and that recipient, assets, amount and refund address all match what the merchant chose, before asking the wallet to sign. `personal_sign` signs any text, and an Intents account accepts a signed `add_public_key` the same way, so challenges are checked for their exact form too. This protects merchants from a compromised API on the payout path. It proves the provider issued a quote for that recipient, not that the merchant approved the recipient, and nothing helps if the server can change the script it serves. A compromised server could also change `recipient` on new customer quotes, because customers can't verify it. These risks are disclosed in the Known limits.
 
 ## Guards
 
@@ -105,12 +105,13 @@ Each guard gets a test, and each is mutation-checked: delete the guard and a tes
 | Unverifiable | Bitcoin routes refused in live mode. See decision 9. |
 | Minimums | Refuse before quoting when a route is under a known minimum: origin-to-origin $1,000 on bsc, pol, ton, op, avax, stellar, monad, xlayer, adi; $100 on tron. Checks 1Click's own `amountInUsd` too. Applies to Intents recipients until a live canary proves otherwise, and to the receive side in direct mode. |
 | Route control | Global mode plus per-chain and per-asset pause in the database. Paused routes refuse new quotes; in-flight payments keep polling. |
+| Price sanity | Refuse a quote where the customer would pay, or the merchant receive, over 3% below the price. A wrong price would otherwise under-pay the merchant. |
 | Price freshness | Refuse to compute a non-stable receive amount from a price older than 5 minutes. Cache token data for far less than the 24 hours allowed by 4.1(e). |
 | Bounds | Min and max USD per payment. Reject amounts that round to zero base units. |
 | Screening | Refund, merchant and destination wallets are checked against the sanctions list. A hit refuses with a neutral message and writes an audit entry. |
 | Availability | Payout or refund above `available` is refused, in `BigInt`. |
 | Signer | Payout signature must recover to the merchant wallet. |
-| Single submit | Payout `submit` is compare-and-set on status; a retry gets the first result. |
+| Single submit | `submit` is compare-and-set on status, and a late response can't move a row back. An unknown outcome stays reserved and resends the same signed intent, because its nonce is single-use. A refused resend proves nothing, since a duplicate of a send that landed gets refused too. It's released only at the signed deadline. FAILED isn't REFUNDED, so a failure stays reserved and watched for a day. |
 | Idempotency | Session creation and API writes are keyed; a repeat returns the first result. |
 | Live gates | See below. |
 

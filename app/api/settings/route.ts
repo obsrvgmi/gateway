@@ -10,7 +10,6 @@ import { loadOrgRow } from "@/server/state";
 
 const body = settingsPatch.extend({
   settlementMode: z.enum(["balance", "direct"]).optional(),
-  defaultDestinationId: z.string().optional(),
 });
 
 /** Finance can set payout rules, which only decide when a merchant is prompted. Settlement mode is owner-only. */
@@ -18,7 +17,7 @@ export const PATCH = orgRoute("read", async (request, { orgId, userId, role, ip 
   const patch = await readJson(request, body);
   const touchesBusiness = patch.businessName !== undefined || patch.receiveAsset !== undefined || patch.branding !== undefined || patch.notifications !== undefined || patch.setupDismissed !== undefined;
   if (touchesBusiness && !can(role, "settings:write")) throw forbidden();
-  if ((patch.payouts !== undefined || patch.defaultDestinationId !== undefined) && !can(role, "money:write") && !can(role, "settings:write")) throw forbidden();
+  if (patch.payouts !== undefined && !can(role, "money:write") && !can(role, "settings:write")) throw forbidden();
   if (patch.settlementMode !== undefined && !can(role, "wallet:write")) throw forbidden("Only an owner can change how funds settle.");
 
   const values: Partial<typeof schema.organizations.$inferInsert> = {};
@@ -31,7 +30,6 @@ export const PATCH = orgRoute("read", async (request, { orgId, userId, role, ip 
   if (patch.payouts?.schedule !== undefined) values.payoutSchedule = patch.payouts.schedule;
   if (patch.payouts?.holdDays !== undefined) values.holdDays = patch.payouts.holdDays;
   if (patch.payouts?.minimumUsd !== undefined) values.minimumUsd = patch.payouts.minimumUsd.toFixed(2);
-  if (patch.defaultDestinationId !== undefined) values.defaultDestinationId = patch.defaultDestinationId;
   if (Object.keys(values).length) await db().update(schema.organizations).set(values).where(eq(schema.organizations.id, orgId));
   await audit(db(), { orgId, actorType: "user", actorId: userId, action: "settings.updated", detail: { fields: Object.keys(values) }, ip });
   return json({ ok: true, settlementMode: (await loadOrgRow(orgId)).settlementMode });

@@ -1,6 +1,8 @@
 import { env } from "../env";
 import { SESSION_COOKIE } from "./session";
 
+export const LOGIN_NONCE_COOKIE = "gw_login";
+
 export function sessionCookie(token: string, expires: Date) {
   return {
     name: SESSION_COOKIE,

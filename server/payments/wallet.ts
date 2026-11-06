@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getAddress, isAddress, recoverMessageAddress, type Hex } from "viem";
+import { walletChallengeBody, type ChallengeAction } from "@/lib/intents";
 import { audit } from "../audit";
 import { db, schema } from "../db";
 import { sendEmail } from "../email";
@@ -16,26 +17,19 @@ import { assertHasWallet, loadOrg } from "./payouts";
 
 const CHALLENGE_TTL_MS = 15 * 60_000;
 
-type Action = "settlement" | "destination";
-
 const tag = (body: string) => createHmac("sha256", env().SECRET_KEY).update(`wallet-challenge:${body}`).digest("hex").slice(0, 32);
 
-function challengeBody(action: Action, orgId: string, address: string, issuedAt: string) {
-  const line = action === "settlement" ? `Make ${address} the settlement wallet` : `Allow payouts to ${address}`;
-  return `Gateway account action\n\n${line}\nWorkspace: ${orgId}\nIssued: ${issuedAt}`;
-}
-
 /** A message for a wallet to sign. Tagged, so only one we issued, recently, for this exact change is accepted. */
-export function issueChallenge(action: Action, orgId: string, address: string, now = new Date()) {
-  const body = challengeBody(action, orgId, address, now.toISOString());
+export function issueChallenge(action: ChallengeAction, orgId: string, address: string, now = new Date()) {
+  const body = walletChallengeBody(action, orgId, address, now.toISOString());
   return `${body}\nCode: ${tag(body)}`;
 }
 
-function assertChallenge(message: string, action: Action, orgId: string, address: string) {
+function assertChallenge(message: string, action: ChallengeAction, orgId: string, address: string) {
   const issued = /^Issued: (.+)$/m.exec(message)?.[1];
   const code = /^Code: ([0-9a-f]{32})$/m.exec(message)?.[1];
   if (!issued || !code) throw badRequest("That signed message isn't valid.", "challenge_invalid");
-  const body = challengeBody(action, orgId, address, issued);
+  const body = walletChallengeBody(action, orgId, address, issued);
   if (message !== `${body}\nCode: ${tag(body)}` || code !== tag(body)) throw badRequest("That signed message isn't valid.", "challenge_invalid");
   const age = Date.now() - Date.parse(issued);
   if (!Number.isFinite(age) || age < 0 || age > CHALLENGE_TTL_MS) throw badRequest("That signed message has expired. Please try again.", "challenge_expired");
@@ -95,6 +89,8 @@ export async function setSettlementWallet(input: { orgId: string; userId: string
       await tx.insert(schema.destinations).values({ id: destinationId, orgId: org.id, label: "Settlement wallet", address: wallet });
     }
     if (!org.defaultDestinationId) await tx.update(schema.organizations).set({ defaultDestinationId: destinationId }).where(eq(schema.organizations.id, org.id));
+    // Open checkouts would still pay the old wallet, so their countdowns end now. They stay tracked.
+    if (org.walletAddress) await tx.update(schema.payments).set({ payBy: new Date(), nextPollAt: new Date() }).where(and(eq(schema.payments.orgId, org.id), eq(schema.payments.recipient, org.walletAddress), eq(schema.payments.state, "awaiting_deposit")));
     await audit(tx, { orgId: org.id, actorType: "user", actorId: input.userId, action: "wallet.set", target: wallet, detail: { from: org.walletAddress }, ip: input.ip });
     await emit(tx, org.id, "alert.wallet_changed", { from: org.walletAddress, to: wallet });
     return row;
