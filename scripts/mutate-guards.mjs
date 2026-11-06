@@ -209,6 +209,9 @@ const MUTANTS = [
   ["live: no simulate route", "app/api/checkout/sessions/[id]/sim/route.ts", "if (!(active instanceof SimProvider) || liveRefused()) throw notFound();", "", ROUTES],
   ["live: refused live has no simulate route", "app/api/checkout/sessions/[id]/sim/route.ts", " || liveRefused()) throw notFound();", ") throw notFound();", ROUTES],
   ["test mode can't fake a real payment", "app/api/checkout/sessions/[id]/sim/route.ts", "if (!row.depositAddress || row.live) throw notFound();", "if (!row.depositAddress) throw notFound();", ROUTES],
+  ["live: no refund simulation", "app/api/refunds/[id]/sim/route.ts", "if (!(active instanceof SimProvider) || liveRefused()) throw notFound();", "", ROUTES],
+  ["live: refused live has no refund simulation", "app/api/refunds/[id]/sim/route.ts", " || liveRefused()) throw notFound();", ") throw notFound();", ROUTES],
+  ["refund simulation: tenant", "app/api/refunds/[id]/sim/route.ts", "eq(schema.refunds.orgId, orgId), ", "", ROUTES],
   ["live: no sample data", "app/api/sample-data/route.ts", 'if (paymentsMode() === "live" || liveRefused()) throw notFound();', "", ROUTES],
   ["live: refused live has no sample data", "app/api/sample-data/route.ts", ' || liveRefused()) throw notFound();', ") throw notFound();", ROUTES],
 

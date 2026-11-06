@@ -12,17 +12,11 @@ const EMAIL = `owner-${Date.now()}@example.com`;
 async function installWallet(context: BrowserContext) {
   await context.exposeFunction("__walletSign", async (hexMessage: string) => merchantWallet.signMessage({ message: hexToString(hexMessage as Hex) }));
   await context.addInitScript((address) => {
-    let chain = "0x1";
     const provider = {
       request: async ({ method, params }: { method: string; params?: unknown[] }) => {
         if (method === "eth_requestAccounts" || method === "eth_accounts") return [address];
         if (method === "personal_sign") return (window as unknown as { __walletSign(m: unknown): Promise<string> }).__walletSign((params as unknown[])[0]);
-        if (method === "eth_chainId") return chain;
-        if (method === "wallet_switchEthereumChain") {
-          chain = (params as { chainId: string }[])[0].chainId;
-          return null;
-        }
-        if (method === "eth_sendTransaction") return `0x${"ab".repeat(32)}`;
+        if (method === "eth_chainId") return "0x1";
         throw new Error(`Unexpected wallet call: ${method}`);
       },
     };
@@ -249,7 +243,7 @@ test("a refund from the balance is checked in the browser and signed by the wall
   await expect(merchant.getByText("Refund on its way")).toBeVisible({ timeout: 30_000 });
 });
 
-test("a refund of direct money is sent from the wallet, and can't be offered twice", async () => {
+test("a refund of direct money goes through a route deposit, checked against the settlement wallet", async () => {
   const set = (settlementMode: string) => merchant.evaluate(async (mode) => (await fetch("/api/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ settlementMode: mode }) })).status, settlementMode);
   expect(await set("direct")).toBe(200);
   try {
@@ -257,8 +251,10 @@ test("a refund of direct money is sent from the wallet, and can't be offered twi
     await openNewestRefund();
     await expect(merchant.getByRole("heading", { name: "Send the refund" })).toBeVisible();
     await expect(merchant.getByText("If the route fails, it returns to")).toBeVisible();
-    await merchant.getByRole("button", { name: "Send from wallet" }).click();
+    await merchant.getByRole("button", { name: "Simulate sending" }).click();
     await expect(merchant.getByText("Refund sent")).toBeVisible({ timeout: 30_000 });
+    // The worker sees the deposit and finishes it, with no further step from anyone.
+    await expect(merchant.getByRole("gridcell", { name: "Refunded" }).first()).toBeVisible({ timeout: 60_000 });
   } finally {
     expect(await set("balance")).toBe(200);
   }

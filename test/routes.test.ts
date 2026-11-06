@@ -24,6 +24,7 @@ import { PATCH as patchSettings } from "@/app/api/settings/route";
 import { GET as getState } from "@/app/api/state/route";
 import { POST as invite } from "@/app/api/team/invites/route";
 import { DELETE as deleteMember, PATCH as patchMember } from "@/app/api/team/members/[id]/route";
+import { POST as simRefund } from "@/app/api/refunds/[id]/sim/route";
 import { GET as v1Links, POST as v1CreateLink } from "@/app/api/v1/payment-links/route";
 import { GET as v1Payment } from "@/app/api/v1/payments/[id]/route";
 import { GET as v1Payments } from "@/app/api/v1/payments/route";
@@ -556,6 +557,23 @@ describe("live mode closes the test-only routes", () => {
       expect((await call(simPay as Handler, { params: { id }, origin: "https://gateway.example", body: { scenario: "pay" } })).status).toBe(404);
     } finally {
       goSim();
+    }
+  });
+
+  it("has no refund simulation when live or refused, and none for another workspace", async () => {
+    const { token, orgId, userId } = await signedIn();
+    const id = newId("rfd_");
+    const paymentId = await paymentRow(false);
+    await db().insert(schema.refunds).values({ id, orgId, paymentId, kind: "route", state: "awaiting_deposit", asset: "USDC", amountBase: "1", payAsset: "ETH", usd: "1", recipient: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", requestedBy: userId, depositAddress: "sim_x", live: false });
+    const stranger = await signedIn();
+    expect((await call(simRefund as Handler, { token: stranger.token, params: { id }, body: {} })).status).toBe(404);
+    for (const go of [goLive, goRefused]) {
+      go();
+      try {
+        expect((await call(simRefund as Handler, { token, params: { id }, origin: "https://gateway.example", body: {} })).status).toBe(404);
+      } finally {
+        goSim();
+      }
     }
   });
 

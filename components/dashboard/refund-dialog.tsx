@@ -146,6 +146,21 @@ function Form({ payment, onClose }: { payment: Payment; onClose: () => void }) {
     }
   };
 
+  /** A simulated address isn't one a wallet can send to, on purpose, so real funds can't go there. */
+  const simulateSend = async () => {
+    if (prepared?.kind !== "route") return;
+    setBusy(true);
+    try {
+      await api(`/api/refunds/${prepared.id}/sim`, { method: "POST" });
+      await refresh().catch(() => undefined);
+      toast.success("Refund sent", { description: "Simulated. It updates here once the route sees it." });
+      onClose();
+    } catch (error) {
+      toast.error("Refund not sent", { description: errorMessage(error) });
+      setBusy(false);
+    }
+  };
+
   // Sent from this browser, and the server never heard: tell it now.
   const unreported = prepared?.kind === "route" && !prepared.depositTxHash && record.state === "sent" ? record.txHash : null;
   useEffect(() => {
@@ -177,7 +192,7 @@ function Form({ payment, onClose }: { payment: Payment; onClose: () => void }) {
         <ModalFooter>
           <Button variant="ghost" disabled={busy} onClick={onClose}>Cancel</Button>
           {prepared.kind === "route" && !alreadySent && <Button variant="secondary" leadingIcon={RiFileCopyLine} onClick={() => { try { void copyText(verifiedRouteAddress(prepared, expectedFor(settlement.wallet ?? "", prepared.amountBase)), "Address"); } catch (error) { toast.error("Address not copied", { description: errorMessage(error) }); } }}>Copy address</Button>}
-          {prepared.kind === "intent" ? <Button disabled={busy} onClick={() => void signAndSend()}>{busy ? "Waiting for wallet" : "Sign in wallet"}</Button> : alreadySent ? <Button onClick={onClose}>Done</Button> : <Button disabled={busy} onClick={() => void sendFromWallet()}>{busy ? "Waiting for wallet" : maybeSent ? "I checked, send from wallet" : "Send from wallet"}</Button>}
+          {prepared.kind === "intent" ? <Button disabled={busy} onClick={() => void signAndSend()}>{busy ? "Waiting for wallet" : "Sign in wallet"}</Button> : alreadySent ? <Button onClick={onClose}>Done</Button> : mode !== "live" ? <Button disabled={busy} onClick={() => void simulateSend()}>Simulate sending</Button> : <Button disabled={busy} onClick={() => void sendFromWallet()}>{busy ? "Waiting for wallet" : maybeSent ? "I checked, send from wallet" : "Send from wallet"}</Button>}
         </ModalFooter>
       </>
     );
