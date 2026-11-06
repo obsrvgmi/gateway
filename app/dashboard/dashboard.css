@@ -65,7 +65,9 @@ html.dark:has(.dash-root) {
   --dash-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 24px -18px rgb(0 0 0 / 0.7);
 }
 
-.dash-root { background: var(--color-background-full); }
+/* The widest the content gets. Only an ultrawide reaches it; the top bar's gutters follow, so the
+ * breadcrumb and the page always share a left edge. */
+.dash-root { --dash-max: 180rem; background: var(--color-background-full); }
 .dash-plate {
   border: 1px solid var(--color-border-button-default);
   background: var(--color-background-inner-default);
@@ -82,12 +84,104 @@ a.dash-plate:hover { border-color: var(--color-border-button-hover); }
   a.dash-plate:hover { translate: 0 -1px; }
 }
 
+/* ----- Control system ----------------------------------------------------------
+ * One material for every control, the same one the landing page uses: a milled well, and raised
+ * keys in it. Mostly token restatements, so vendored components follow. Where a token can't carry
+ * it this targets BoardUI's own classes; this file is unlayered, so it wins over their utilities.
+ * Everything sits under html:has(.dash-root) because menus and modals portal to <body>.
+ * --------------------------------------------------------------------------- */
+html:has(.dash-root) {
+  --dash-field: #fbfdfc;
+  --dash-key: inset 0 1px 0 var(--stage-sheen), 0 0 0 1px var(--stage-edge), 0 1px 2px rgb(6 40 30 / 0.16), 0 4px 8px -5px rgb(6 40 30 / 0.22);
+  --dash-menu: 0 0 0 1px var(--stage-edge), 0 2px 4px rgb(6 40 30 / 0.05), 0 18px 36px -14px rgb(6 40 30 / 0.26);
+  --color-segmented-control-background: var(--color-background-secondary-default);
+  --color-segmented-control-selected-background: var(--color-background-primary-default);
+  --color-dropdown-item-hover-background: var(--color-background-secondary-default);
+  /* Quiet tints: status is information, not decoration. Text is stepped to clear AA on each tint. */
+  --color-status-lime-background: rgb(0 168 107 / 0.1);
+  --color-status-lime-text: #056a48;
+  --color-status-yellow-background: rgb(214 150 0 / 0.12);
+  --color-status-yellow-text: #775300;
+  --color-status-rose-background: rgb(224 60 90 / 0.09);
+  --color-status-rose-text: #a3163c;
+  --color-status-cyan-background: rgb(0 140 190 / 0.09);
+  --color-status-cyan-text: #075a79;
+  --color-status-orange-background: rgb(226 104 40 / 0.1);
+  --color-status-orange-text: #99400f;
+  --gradient-button-primary-disabled: linear-gradient(180deg, var(--color-background-secondary-default), var(--color-background-secondary-default));
+  --color-button-primary-disabled-foreground: var(--color-text-tertiary);
+  --color-background-primary-disabled: transparent;
+}
+html.dark:has(.dash-root) {
+  --dash-field: #0b1512;
+  --dash-key: inset 0 1px 0 var(--stage-sheen), 0 0 0 1px var(--stage-edge), 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 8px -5px rgb(0 0 0 / 0.6);
+  --dash-menu: 0 0 0 1px var(--stage-edge), 0 2px 4px rgb(0 0 0 / 0.3), 0 20px 40px -14px rgb(0 0 0 / 0.75);
+  --color-segmented-control-background: #0b1512;
+  --color-segmented-control-selected-background: #20312b;
+  --color-dropdown-item-hover-background: #1a2925;
+  --color-status-lime-background: rgb(0 236 151 / 0.11);
+  --color-status-lime-text: #5eeab8;
+  --color-status-yellow-background: rgb(240 190 60 / 0.12);
+  --color-status-yellow-text: #f2cd6d;
+  --color-status-rose-background: rgb(255 90 120 / 0.12);
+  --color-status-rose-text: #ff9db1;
+  --color-status-cyan-background: rgb(70 200 240 / 0.12);
+  --color-status-cyan-text: #84dcf5;
+  --color-status-orange-background: rgb(255 140 70 / 0.12);
+  --color-status-orange-text: #ffb98a;
+}
+
+/* The tokens above sit on <html>, so a light preview on a dark page has to take its text back. */
+html.dark:has(.dash-root) .theme-scope-light { --color-text-secondary: #55645e; --color-text-tertiary: #7b8a83; }
+
+html:has(.dash-root) { scrollbar-color: var(--color-border-button-hover) transparent; }
+html:has(.dash-root) * { scrollbar-width: thin; }
+
+/* Fields: pressed into the panel, not a grey fill. Writes the inset through Tailwind's own variable
+ * so the vendored hover and focus rings stack on top of it. The preview's own theme scope is left alone. */
+html:has(.dash-root) .bui-field:not(.bg-background-tertiary-error, .bg-input-disabled-background, .theme-scope-light *, section[aria-label^="Checkout"] *) {
+  background: var(--dash-field);
+  --tw-inset-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--color-border-button-default);
+}
+
+/* Segmented controls: the thumb already slides, so this is only its material. */
+html:has(.dash-root) .bg-segmented-control-background { border-radius: 0.75rem; padding: 0.1875rem; box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--color-separator-border), 0 1px 0 var(--stage-sheen); }
+html:has(.dash-root) .bg-segmented-control-selected-background { border-radius: 0.5625rem; box-shadow: var(--dash-key); }
+
+/* Status: a hairline in its own colour, so a tint this quiet still has an edge. */
+html:has(.dash-root) [class*="bg-status-"].px-1\.5 { border-radius: 0.4375rem; padding-inline: 0.4375rem; font-size: 0.75rem; line-height: 1.125rem; font-weight: 550; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 16%, transparent); }
+
+/* Menus, selects and popovers */
+html:has(.dash-root) .shadow-dropdown { border-color: transparent; border-radius: 1rem; padding: 0.375rem; box-shadow: var(--dash-menu); }
+html:has(.dash-root) .shadow-dropdown [role="menuitem"], html:has(.dash-root) .shadow-dropdown [role="option"] { min-height: 2.25rem; border-radius: 0.625rem; }
+
+/* Tables: no grey header bar. A small header, a row with room, and a hover that says it opens. */
+html:has(.dash-root) .bui-table th { border-top: 0; padding-block: 0.625rem; font-size: 0.75rem; line-height: 1rem; font-weight: 600; color: var(--color-text-secondary); background: transparent; }
+html:has(.dash-root) .bui-table td { padding-block: 0.75rem; font-variant-numeric: tabular-nums; }
+html:has(.dash-root) .bui-table tbody tr:hover { background: color-mix(in srgb, var(--color-background-secondary-default) 62%, transparent); }
+
+/* Type. Figures and titles are the page's voice, so they get the landing's tighter setting. */
+.dash-title { font-size: 1.75rem; line-height: 2.25rem; font-weight: 620; letter-spacing: -0.028em; }
+.dash-panel-title { font-size: 1.0625rem; line-height: 1.5rem; font-weight: 620; letter-spacing: -0.016em; }
+.dash-figure { font-size: 1.625rem; line-height: 2.125rem; font-weight: 620; letter-spacing: -0.026em; font-variant-numeric: tabular-nums; }
+
+/* A coin tile, as on the landing page: off is pressed in, on is raised with a check. */
+.dash-coin { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; border-radius: 0.875rem; padding-block: 0.5625rem; cursor: pointer; outline: none; font-size: 0.75rem; line-height: 1rem; font-weight: 600; color: var(--color-text-secondary); background: var(--color-background-secondary-default); box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--color-separator-border); transition: background-color 160ms ease, box-shadow 160ms ease, color 160ms ease; }
+.dash-coin:not([aria-pressed="true"]) svg { opacity: 0.6; filter: saturate(0.3); }
+.dash-coin[aria-pressed="true"] { color: var(--color-text-primary); background: var(--color-background-primary-default); box-shadow: inset 0 1px 0 var(--stage-sheen), 0 0 0 1px color-mix(in srgb, var(--stage-flow) 70%, transparent), 0 1px 2px rgb(6 40 30 / 0.14); }
+.dash-coin:focus-visible { box-shadow: 0 0 0 2px var(--color-border-focus-ring); }
+.dash-coin-check { position: absolute; top: 0.3125rem; inset-inline-end: 0.3125rem; display: flex; width: 0.875rem; height: 0.875rem; align-items: center; justify-content: center; border-radius: 999px; color: var(--color-text-on-accent); background: var(--color-accent-500); }
+
+/* A bar with a lit top, for the two column charts drawn in HTML. */
+.dash-bar-fill { background: linear-gradient(180deg, var(--viz-primary), color-mix(in srgb, var(--viz-primary) 62%, transparent)); }
+
 /* ----- Rail ------------------------------------------------------------------ */
 .dash-rail {
   position: relative;
   display: flex;
   height: 100%;
-  width: 15rem;
+  /* A variable, not a width: this file is unlayered, so a w-* utility on the element would lose. */
+  width: var(--rail-width, 15rem);
   flex-direction: column;
   gap: 1rem;
   padding: 0.875rem 0.75rem 0.75rem;
@@ -146,7 +240,7 @@ a.dash-plate:hover { border-color: var(--color-border-button-hover); }
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
   backdrop-filter: blur(14px) saturate(1.4);
 }
-@media (min-width: 640px) { .dash-bar { padding-inline: 1.25rem; } }
+@media (min-width: 640px) { .dash-bar { padding-inline: max(1.25rem, calc((100% - var(--dash-max)) / 2)); } }
 .dash-search {
   display: inline-flex;
   height: 2.25rem;
@@ -159,12 +253,30 @@ a.dash-plate:hover { border-color: var(--color-border-button-hover); }
   font-size: 0.875rem;
   line-height: 1.25rem;
   color: var(--color-text-secondary);
-  background: var(--color-background-secondary-default);
-  box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--color-separator-border);
+  background: var(--dash-field);
+  box-shadow: inset 0 1px 2px var(--well-shade), inset 0 0 0 1px var(--color-border-button-default);
   transition: color 120ms ease;
 }
 .dash-search:hover { color: var(--color-text-primary); }
 .dash-search:focus-visible { box-shadow: 0 0 0 2px var(--color-border-focus-ring); }
+
+/* ----- Large screens ------------------------------------------------------------
+ * Overview, Payments and Payouts recompose on the 12-column Bento with @wide and @ultra spans. These
+ * two cover what spans can't: panels of unknown height, and a preview that has the room to breathe.
+ * --------------------------------------------------------------------------- */
+@container (min-width: 135rem) {
+  .dash-masonry { display: block; column-gap: 1rem; columns: var(--masonry-columns, 2); }
+  .dash-masonry > * { margin-block-end: 1rem; break-inside: avoid; }
+}
+/* The builders' preview: a dotted artboard, the same "not final yet" idea as the hatch. */
+@container (min-width: 100rem) {
+  .dash-canvas {
+    background-color: var(--color-background-secondary-default);
+    background-image: radial-gradient(circle, var(--color-border-button-default) 1px, transparent 1.25px);
+    background-size: 1.25rem 1.25rem;
+    background-position: center;
+  }
+}
 
 /* ----- Position strip: the money, left to right ------------------------------- */
 .pos-strip { padding: 0.25rem; gap: 0; border-radius: 1.5rem; }

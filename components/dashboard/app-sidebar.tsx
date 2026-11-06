@@ -16,7 +16,7 @@ import {
 import { Avatar } from "@/components/base/avatar/avatar";
 import { Dropdown, DropdownDivider, DropdownGroup, DropdownItem, DropdownPopover, DropdownTrigger } from "@/components/base/dropdown/dropdown";
 import { Logo } from "@/components/brand/logo";
-import { formatUsd } from "@/lib/format";
+import { formatUsd, shortAddress } from "@/lib/format";
 import { metricsNow } from "@/lib/metrics";
 import { failedPayouts, formatPayoutDate, ledger, nextPayoutAt } from "@/lib/payouts";
 import { useGateway, useGatewayReady } from "@/lib/store";
@@ -68,11 +68,11 @@ export function AppSidebar({ onNavigate, className }: { onNavigate?: () => void;
             <Avatar initials={ready ? settings.businessName.slice(0, 2).toUpperCase() : ""} size="sm" />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-body-medium text-text-primary">{ready ? settings.businessName : "\u00a0"}</span>
-              <span dir="ltr" className="truncate text-caption-1-regular text-text-secondary">{ready ? settings.walletAddress : "\u00a0"}</span>
+              <span dir="ltr" className="truncate text-caption-1-regular text-text-secondary">{ready ? shortAddress(settings.walletAddress) : "\u00a0"}</span>
             </span>
             <RiExpandUpDownLine className="size-4 shrink-0 text-foreground-icon-tertiary" aria-hidden />
           </DropdownTrigger>
-          <DropdownPopover aria-label="Account" placement="bottom start" className="w-[220px] p-2">
+          <DropdownPopover aria-label="Account" placement="bottom start" className="w-(--trigger-width) p-2">
             <DropdownGroup>
               <DropdownItem onSelect={() => { onNavigate?.(); guardedPush(router, "/dashboard/settings"); }} className="px-2 py-1.5">
                 <RiSettings4Line className="size-[18px] text-foreground-icon-secondary" aria-hidden />

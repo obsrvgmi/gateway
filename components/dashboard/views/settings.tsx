@@ -21,7 +21,7 @@ import { formatDate, shortAddress } from "@/lib/format";
 import { actions, getGateway, newId, useGateway } from "@/lib/store";
 import type { ApiKey, AssetSymbol, NotificationPrefs, Settings, TeamRole, Webhook, WebhookEvent } from "@/lib/types";
 import { AssetSelect } from "../asset-select";
-import { Bento, CopyButton, EmptyState, PageHeader, Panel } from "../ui";
+import { Bento, CopyButton, EmptyState, MAIN_ULTRA, PageHeader, Panel, useMainAtLeast } from "../ui";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EVENTS: WebhookEvent[] = ["payment.processing", "payment.settled", "payment.refunded", "payment.expired", "link.created"];
@@ -54,12 +54,40 @@ export function SettingsView() {
   const brandKey = JSON.stringify(settings.branding);
   const initial = useSearchParams().get("tab");
 
+  // Past 135rem there's room for all of it at once, so the tabs would only hide things.
+  const everything = useMainAtLeast(MAIN_ULTRA);
+  const appearance = (
+    <Panel title="Appearance" description="Choose light or dark for the dashboard." className="col-span-12 @2xl:col-span-6">
+      <ThemeToggle appearance="segmented" />
+    </Panel>
+  );
+  const demoData = (
+    <Panel title="Demo data" description="This is a mock product. Data is kept in this browser only." className="col-span-12 @2xl:col-span-6">
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" disabled={!hasData} onClick={() => setClearing(true)}>Clear data</Button>
+        <Button variant="ghost" onClick={() => { const before = getGateway(); actions.restoreDemoData(); toast.success("Demo data restored", { id: "demo-data", actions: [{ label: "Undo", onClick: () => actions.restoreSnapshot(before) }] }); }}>Restore demo data</Button>
+      </div>
+    </Panel>
+  );
+
   return (
     <>
       <PageHeader title="Settings" description="Your business, developer access, team and this demo." />
+      {everything ? (
+        <Bento className="dash-masonry [--masonry-columns:3]">
+          <ProfileCard key={payoutKey} settings={settings} />
+          <BrandingCard key={brandKey} settings={settings} />
+          <TeamCard team={settings.team} />
+          <WebhooksCard hooks={settings.webhooks} />
+          <ApiKeys keys={settings.apiKeys} />
+          <NotificationsCard prefs={settings.notifications} />
+          {appearance}
+          {demoData}
+        </Bento>
+      ) : (
       <Tabs defaultSelectedKey={initial && TABS.some(([id]) => id === initial) ? initial : "business"}>
-        <TabList aria-label="Settings sections" className="overflow-x-auto">
-          {TABS.map(([id, label]) => <Tab key={id} id={id}>{label}</Tab>)}
+        <TabList aria-label="Settings sections">
+          {TABS.map(([id, label]) => <Tab key={id} id={id}>{id === "team" ? <>Team<span className="hidden sm:inline"> and alerts</span></> : label}</Tab>)}
         </TabList>
         <TabPanel id="business" className="pt-4">
           <Bento>
@@ -81,18 +109,12 @@ export function SettingsView() {
         </TabPanel>
         <TabPanel id="workspace" className="pt-4">
           <Bento>
-            <Panel title="Appearance" description="Choose light or dark for the dashboard." className="col-span-12 @2xl:col-span-6">
-              <ThemeToggle appearance="segmented" />
-            </Panel>
-            <Panel title="Demo data" description="This is a mock product. Data is kept in this browser only." className="col-span-12 @2xl:col-span-6">
-              <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" disabled={!hasData} onClick={() => setClearing(true)}>Clear data</Button>
-                <Button variant="ghost" onClick={() => { const before = getGateway(); actions.restoreDemoData(); toast.success("Demo data restored", { id: "demo-data", actions: [{ label: "Undo", onClick: () => actions.restoreSnapshot(before) }] }); }}>Restore demo data</Button>
-              </div>
-            </Panel>
+            {appearance}
+            {demoData}
           </Bento>
         </TabPanel>
       </Tabs>
+      )}
       <AlertDialog
         isOpen={clearing}
         onOpenChange={setClearing}
@@ -200,7 +222,7 @@ function WebhooksCard({ hooks }: { hooks: Webhook[] }) {
           {hooks.map((hook) => (
             <li key={hook.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
               <div className="flex min-w-0 flex-1 flex-col">
-                <span dir="ltr" className="truncate text-body-medium" title={hook.url}>{hook.url}</span>
+                <span dir="ltr" className="text-body-medium [overflow-wrap:anywhere]">{hook.url}</span>
                 <span className="truncate text-caption-1-regular text-text-secondary">{hook.events.length} events, added {formatDate(hook.createdAt)}</span>
               </div>
               <Switch size="sm" isSelected={hook.enabled} onChange={(enabled) => { actions.updateWebhook(hook.id, { enabled }); toast.success(enabled ? "Webhook turned on" : "Webhook turned off", { id: `webhook-${hook.id}`, description: "Mock endpoint. Nothing is sent." }); }} aria-label={`Enable ${hook.url}`} />
@@ -256,7 +278,7 @@ function TeamCard({ team }: { team: Settings["team"] }) {
               <Avatar initials={member.name.slice(0, 2).toUpperCase()} size="sm" />
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-body-medium">{member.name}</span>
-                <span dir="ltr" className="truncate text-caption-1-regular text-text-secondary">{member.email}</span>
+                <span dir="ltr" className="text-caption-1-regular text-text-secondary [overflow-wrap:anywhere]">{member.email}</span>
               </div>
               {member.status === "invited" && <Chip color="yellow" variant="caption">Invited</Chip>}
               <Chip color="soft" variant="caption">{ROLE_LABEL[member.role]}</Chip>

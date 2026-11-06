@@ -65,9 +65,9 @@ export function SwitchCard({
           <span className="flex min-w-0 items-center gap-3">
             {Icon && <Icon className="size-6 shrink-0 text-foreground-icon-secondary" aria-hidden />}
             <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="truncate text-body-medium text-text-primary">{title}</span>
+              <span className="text-body-medium text-text-primary">{title}</span>
               {description !== undefined && description !== null && (
-                <span className="truncate text-body-regular text-text-secondary">{description}</span>
+                <span className="text-body-regular text-text-secondary">{description}</span>
               )}
             </span>
           </span>

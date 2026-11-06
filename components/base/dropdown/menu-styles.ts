@@ -19,6 +19,9 @@ export const MENU_POPOVER_SURFACE = [
 
 export const MENU_POPOVER_WIDTH = "w-[266px]";
 
+/** A listbox hugs its longest option but is never narrower than its trigger. */
+export const MENU_POPOVER_FIT = "w-max min-w-(--trigger-width)";
+
 export const MENU_ITEMS_CONTAINER = "flex w-full flex-col gap-1 outline-none";
 
 export const MENU_ITEM = [

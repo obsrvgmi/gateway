@@ -41,7 +41,7 @@ export function Sparkline({ values, label, className }: { values: number[]; labe
 /** Recharts is by far the largest thing on a dashboard route, and only this chart uses it. The box is the same either way. */
 export const VolumeChart = dynamic(() => preloadVolumeChart().then((module) => module.VolumeChart), {
   ssr: false,
-  loading: () => <div aria-hidden className="relative min-h-64 min-w-0 flex-1 animate-pulse rounded-xl bg-background-secondary-default motion-reduce:animate-none @3xl:min-h-72" />,
+  loading: () => <div aria-hidden className="relative min-h-64 min-w-0 flex-1 animate-pulse rounded-xl bg-background-secondary-default motion-reduce:animate-none @3xl:min-h-72 @ultra:min-h-[max(20rem,30dvh)]" />,
 });
 
 export function LegendKey({ kind, children }: { kind: "bar" | "line" | "partial"; children: string }) {
@@ -79,7 +79,7 @@ export function RankBars({ rows }: { rows: { key: string; label: string; value: 
                 <span className="truncate text-body-medium">{row.label}</span>
                 <span className="shrink-0 text-body-regular text-text-secondary tabular-nums">{row.value}</span>
               </div>
-              <div className="h-1 overflow-hidden rounded-full bg-background-secondary-default">
+              <div className="dash-well h-1.5 overflow-hidden rounded-full">
                 <div className="h-full rounded-full" style={{ width: `${(row.share / top) * 100}%`, background: row.color ?? "var(--viz-primary)" }} />
               </div>
             </div>
@@ -143,15 +143,15 @@ export function PayoutBars({ rows }: { rows: { key: string; label: string; usd: 
       }}
       className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background-inner-default"
     >
-      <div aria-hidden className="flex h-28 flex-col justify-between text-end text-caption-2-regular text-text-secondary tabular-nums">
+      <div aria-hidden className="flex h-28 flex-col justify-between @wide:h-44 text-end text-caption-2-regular text-text-secondary tabular-nums">
         {ticks.map((tick, index) => <span key={tick} className={cx("leading-none", index === 0 ? "-mt-px" : index === 2 ? "-mb-px" : "")}>{formatCompactUsd(tick)}</span>)}
       </div>
-      <div className="relative h-28">
+      <div className="relative h-28 @wide:h-44">
         {ticks.map((tick) => <span key={tick} aria-hidden className="absolute inset-x-0 h-px bg-separator-border" style={{ bottom: `${(tick / top) * 100}%` }} />)}
         <ul className="absolute inset-0 flex items-stretch" onPointerLeave={() => setActive(null)}>
           {rows.map((row, index) => (
             <li key={row.key} onPointerEnter={() => setActive(index)} className="flex min-w-0 flex-1 flex-col justify-end px-px">
-              <span className={cx("block rounded-t-[4px] bg-(--viz-primary) transition-opacity duration-100", active !== null && active !== index && "opacity-45")} style={{ height: `${Math.max((row.usd / top) * 100, row.usd ? 2 : 0)}%` }} />
+              <span className={cx("dash-bar-fill block rounded-t-[5px] transition-opacity duration-100", active !== null && active !== index && "opacity-45")} style={{ height: `${Math.max((row.usd / top) * 100, row.usd ? 2 : 0)}%` }} />
               <span className="sr-only">{row.label}: {formatUsd(row.usd)}</span>
             </li>
           ))}
@@ -181,7 +181,7 @@ export function Histogram({ bins }: { bins: { label: string; short: string; coun
       {bins.map((bin) => (
         <li key={bin.label} className="flex min-w-0 flex-1 flex-col justify-end gap-1" title={`${bin.label}: ${formatCount(bin.count)} payments`}>
           <span className="text-center text-caption-2-medium text-text-secondary tabular-nums">{formatCount(bin.count)}</span>
-          <span className="block rounded-t-sm bg-(--viz-primary)" style={{ height: `${Math.max((bin.count / top) * 62, bin.count ? 3 : 0)}%` }} />
+          <span className="dash-bar-fill block rounded-t-[5px]" style={{ height: `${Math.max((bin.count / top) * 62, bin.count ? 3 : 0)}%` }} />
           <span className="border-t border-separator-border pt-1 text-center text-caption-2-regular text-text-secondary"><span className="sr-only">{bin.label}</span><span aria-hidden>{bin.short}</span></span>
         </li>
       ))}

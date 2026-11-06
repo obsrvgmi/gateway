@@ -32,8 +32,6 @@
   /* A milled well in a plate: shaded from the top edge, so it reads as depth and not as grey fill. */
   --stage-well: #eef4f1;
   --well-shade: rgb(6 40 30 / 0.1);
-  --shop-ground: #f6faf8;
-  --shop-wall: #e9f0ec;
   --stage-edge: rgb(6 40 30 / 0.1);
   --stage-sheen: rgb(255 255 255 / 1);
   /* Bezel: the machined edge, as a lit gradient that runs round the plate. */
@@ -69,8 +67,6 @@
   --stage-recess: #08110e;
   --stage-well: #0c1815;
   --well-shade: rgb(0 0 0 / 0.5);
-  --shop-ground: #0d1916;
-  --shop-wall: #15241f;
   --stage-edge: rgb(190 255 230 / 0.09);
   --stage-sheen: rgb(220 255 240 / 0.14);
   --plate-bezel: linear-gradient(150deg, rgb(226 255 243 / 0.5) 0%, rgb(120 170 150 / 0.14) 26%, rgb(226 255 243 / 0.3) 52%, rgb(120 170 150 / 0.1) 78%, rgb(226 255 243 / 0.24) 100%);
