@@ -11,12 +11,7 @@
   --container-ultra: 135rem;
 }
 
-/* Vendored extras no route renders. Keeping them out of the scan takes about 3 KB off the blocking CSS. */
-@source not "../components/application/settings";
-@source not "../components/application/data-table";
-@source not "../components/application/dashboard/dashboard-sidebar.tsx";
-@source not "../components/application/dashboard/dashboard-team-menu.tsx";
-@source not "../components/application/dashboard/dashboard-user-menu.tsx";
+/* Not application code: keeping these out of the scan keeps the blocking CSS small. */
 @source not "../public";
 @source not "../.agents";
 @source not "../skills-lock.json";
