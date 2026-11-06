@@ -4,6 +4,13 @@
 @import "./theme-scope-light.css";
 @import "./stage.css";
 
+/* Dashboard width tiers, measured on <main>'s content box: @wide catches a 1920 display, @ultra a 2560.
+ * MAIN_WIDE and MAIN_ULTRA in components/dashboard/ui.tsx are the same numbers. */
+@theme {
+  --container-wide: 100rem;
+  --container-ultra: 135rem;
+}
+
 /* Not application code: keeping these out of the scan keeps the blocking CSS small. */
 @source not "../public";
 @source not "../.agents";

@@ -13,7 +13,7 @@ const LINKS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/pay/lnk_8fk2m1", label: "Try a payment" },
 ];
-const MICROPRINT = "SPECIMEN  NO FUNDS MOVE  ANY ASSET IN  ONE ASSET OUT  ".repeat(14);
+const MICROPRINT = "SPECIMEN  NO FUNDS MOVE  ".repeat(14);
 
 /**
  * The reverse of the note: the same ink in both themes, so the page always ends on the same frame.
@@ -31,7 +31,7 @@ export function SiteFooter() {
         <Bus span={120} delay={-1.2} className="foot-bus" />
         <div className="foot-close">
           <span aria-hidden className="foot-seal"><span className="foot-seal-ring" /><span className="logo-key foot-seal-key"><LogoMark className="size-7" /></span></span>
-          <h2 className="foot-title">Any asset in.<br /> One asset out.</h2>
+          <h2 className="foot-title">They pay their way.<br /> You get paid yours.</h2>
           <div className="foot-actions">
             <NavButton href="/dashboard/links/new" trailingIcon={RiArrowRightLine} className="stage-cta">Create Payment Link</NavButton>
             <NavButton href="/pay/lnk_8fk2m1" variant="secondary" className="stage-cta">Try a payment</NavButton>

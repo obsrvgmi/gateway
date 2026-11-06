@@ -19,8 +19,8 @@ import {
   MENU_ITEM,
   MENU_ITEM_ACTIVE,
   MENU_ITEMS_CONTAINER,
+  MENU_POPOVER_FIT,
   MENU_POPOVER_SURFACE,
-  MENU_POPOVER_WIDTH,
 } from "@/components/base/dropdown/menu-styles";
 import { Label } from "@/components/base/input/label";
 import { ChevronDownSmall } from "@/components/foundations/icons/chevrons";
@@ -57,7 +57,7 @@ export interface SelectProps<T extends object>
   extends Omit<AriaSelectProps<T>, "children"> {
   /** Visible label above the trigger; React Aria wires it as the select's accessible name. */
   label?: ReactNode;
-  /** Trigger width. Defaults to hug content; the menu uses the shared 266px width. */
+  /** Trigger width. Defaults to hug content; the menu hugs its options and is at least as wide as the trigger. */
   className?: string;
   triggerClassName?: string;
   /** Classes for the open popover (e.g. constrain its width). */
@@ -150,7 +150,7 @@ export function Select<T extends object>({
             isNonModal
             offset={4}
             className={cx(
-              MENU_POPOVER_WIDTH,
+              MENU_POPOVER_FIT,
               MENU_POPOVER_SURFACE,
               // Listbox rows already space themselves 4px apart, so the
               // surface sits a touch tighter than the action-menu Dropdown.
