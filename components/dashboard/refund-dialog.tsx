@@ -106,7 +106,7 @@ function Form({ payment, onClose }: { payment: Payment; onClose: () => void }) {
           </dl>
           <p className="flex items-start gap-1.5 text-caption-1-regular text-text-secondary">
             <RiShieldCheckLine className="mt-px size-4 shrink-0" aria-hidden />
-            {prepared.kind === "intent" ? "Your wallet shows a transfer to a one-time routing address. This browser has checked the route's signature proves it pays the customer's wallet above." : `Send exactly this asset on ${prepared.chain}. Anything else may be lost.`}
+            {prepared.kind === "intent" ? "Your wallet shows a transfer to a one-time routing address. This browser has checked the route's signature proves it pays the customer's wallet above." : `Send exactly this asset on ${prepared.chain}, once. Anything else may be lost. If you already sent it, don't send it again.`}
           </p>
         </ModalBody>
         <ModalFooter>

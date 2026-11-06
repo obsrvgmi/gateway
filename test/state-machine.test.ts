@@ -72,7 +72,7 @@ describe("nextPollDelayMs", () => {
 
   it("polls fast while a customer is waiting", () => {
     expect(nextPollDelayMs(input({}))).toBe(10_000);
-    expect(nextPollDelayMs(input({ state: "processing", createdAt: NOW - 5 * DAY }))).toBe(10_000);
+    expect(nextPollDelayMs(input({ state: "processing" }))).toBe(10_000);
   });
 
   it("slows down, but keeps watching past the deadline", () => {
@@ -87,6 +87,11 @@ describe("nextPollDelayMs", () => {
 
   it("keeps polling a failed payment, which may still reach a refund", () => {
     expect(nextPollDelayMs(input({ state: "failed", createdAt: NOW - 2 * HOUR }))).not.toBeNull();
+  });
+
+  it("never stops asking about money in flight, only slows down", () => {
+    expect(nextPollDelayMs(input({ state: "processing", createdAt: NOW - 2 * HOUR }))).toBe(60_000);
+    expect(nextPollDelayMs(input({ state: "deposit_seen", createdAt: NOW - 400 * DAY, deadline: NOW - 397 * DAY }))).toBe(600_000);
   });
 
   it("stops on a payment that never got an address", () => {

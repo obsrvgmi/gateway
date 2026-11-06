@@ -45,7 +45,7 @@ export default function DocsPage() {
       <p>Errors are <code>{`{"error":{"code","message"}}`}</code> with a matching HTTP status. Keys are limited to 600 requests a minute.</p>
 
       <H id="webhooks">Webhooks</H>
-      <p>Add an endpoint under Settings, Developers. Each event is a POST with these headers. We retry for about a day, at growing intervals, until you return a 2xx. Deliveries can repeat or arrive out of order, so de-duplicate on the event id and read the status from the event, or from the API.</p>
+      <p>Add an endpoint under Settings, Developers. Each event is a POST with these headers. We retry for over a day, at growing intervals, until you return a 2xx. Deliveries can repeat or arrive out of order, so de-duplicate on the event id and read the status from the event, or from the API.</p>
       <Code>{`Gateway-Event: payment.settled
 Gateway-Event-Id: evt_123
 Gateway-Signature: t=1763000000,v1=<hex hmac>

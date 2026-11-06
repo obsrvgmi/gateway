@@ -22,6 +22,8 @@ type RefundRow = typeof schema.refunds.$inferSelect;
 type PaymentRow = typeof schema.payments.$inferSelect;
 
 const OPEN = ["awaiting_deposit", "submitting", "processing"];
+/** A route refund nobody funded can be replaced after this. Sooner, the merchant's deposit may just not have been seen yet. */
+const ABANDON_AFTER_MS = 30 * 60_000;
 
 /** What's left to refund: received, less refunds done, in the asset the merchant received. */
 export const refundableBase = (payment: Pick<PaymentRow, "receivedBase" | "refundedBase">) => BigInt(payment.receivedBase ?? "0") - BigInt(payment.refundedBase);
@@ -43,11 +45,20 @@ export async function prepareRefund(input: { orgId: string; paymentId: string; a
   if (amount <= 0n) throw conflict("This payment has nothing left to refund.", "not_refundable");
   if (amount > remaining) throw conflict("That's more than is left to refund on this payment.", "refund_too_large", { remaining: remaining.toString() });
 
-  const open = await db().select({ id: schema.refunds.id }).from(schema.refunds).where(and(eq(schema.refunds.paymentId, payment.id), inArray(schema.refunds.state, OPEN))).limit(1);
-  if (open.length) throw conflict("A refund for this payment is already under way.", "refund_open");
+  const [open] = await db().select().from(schema.refunds).where(and(eq(schema.refunds.paymentId, payment.id), inArray(schema.refunds.state, OPEN))).limit(1);
+  if (open) {
+    if (open.state !== "awaiting_deposit") throw conflict("A refund for this payment is already under way.", "refund_open");
+    // Asked again for the same refund: the same address, so nobody is shown a second one to pay.
+    if (open.amountBase === amount.toString()) return routeRefundForClient(open);
+    if (Date.now() - open.createdAt.getTime() < ABANDON_AFTER_MS) throw conflict("A refund for this payment is waiting for your deposit. Finish that one, or try again in 30 minutes.", "refund_open");
+    // Still watched: if money reaches the old address after all, it lands and is counted.
+    await db().update(schema.refunds).set({ state: "abandoned", updatedAt: new Date() }).where(eq(schema.refunds.id, open.id));
+  }
 
   const asset = payment.receiveAsset as AssetSymbol;
   const payAsset = payment.payAsset as AssetSymbol;
+  // A balance belongs to one key. If the wallet changed since, this one can't sign for those funds.
+  if (payment.recipientType === "INTENTS" && payment.recipient !== org.walletAddress) throw conflict("This payment landed in a previous settlement wallet. Refund it from that wallet.", "refund_other_wallet");
   await assertRoutesOpen([asset, payAsset]);
   await assertNotScreened([payment.payer], { orgId: org.id, action: "refund", ip: input.ip });
 
@@ -93,27 +104,36 @@ export async function prepareRefund(input: { orgId: string; paymentId: string; a
   assertQuoteSigned(response, provider().quoteKey);
   assertLiveQuoteUsable(response);
   const depositAddress = response.quote.depositAddress as string;
-  await db().insert(schema.refunds).values({ ...row, kind: "route", state: "awaiting_deposit", payBase: response.quote.amountOut, depositAddress, depositMemo: response.quote.depositMemo ?? null, quote: response, quoteSignature: response.signature, nextPollAt: new Date(Date.now() + 10_000) });
+  const [created] = await db().insert(schema.refunds).values({ ...row, kind: "route", state: "awaiting_deposit", payBase: response.quote.amountOut, depositAddress, depositMemo: response.quote.depositMemo ?? null, quote: response, quoteSignature: response.signature, nextPollAt: new Date(Date.now() + 10_000) }).returning();
   await audit(db(), { orgId: org.id, actorType: "user", actorId: input.userId, action: "refund.prepared", target: id, detail: { paymentId: payment.id, amountBase: row.amountBase, route: true }, ip: input.ip });
+  return routeRefundForClient(created);
+}
+
+function routeRefundForClient(row: RefundRow) {
+  const asset = row.asset as AssetSymbol;
+  const response = row.quote as QuoteResponse;
   return {
-    id,
+    id: row.id,
     kind: "route" as const,
     asset,
     amountBase: row.amountBase,
-    amount: baseToDecimal(amount, ASSETS[asset].tokenDecimals),
+    amount: baseToDecimal(row.amountBase, ASSETS[asset].tokenDecimals),
     chain: ASSETS[asset].chain,
-    payAsset,
+    payAsset: row.payAsset as AssetSymbol,
     payBase: response.quote.amountOut,
     minPayBase: response.quote.minAmountOut,
-    recipient: payment.payer,
-    depositAddress,
-    depositMemo: response.quote.depositMemo ?? null,
+    recipient: row.recipient,
+    depositAddress: row.depositAddress as string,
+    depositMemo: row.depositMemo,
     deadline: response.quote.deadline,
     quote: response,
     quoteKey: provider().quoteKey,
     assetId: ASSETS[asset].assetId,
   };
 }
+
+/** How far past a route refund's deadline we keep looking for a late deposit before closing it. */
+const ROUTE_GRACE_MS = 7 * 86_400_000;
 
 /** Same single-send rule as a payout: compare-and-set, the attempt recorded before the send. */
 export async function submitRefund(input: { orgId: string; refundId: string; signature: string; userId: string; ip?: string | null }) {
@@ -165,7 +185,8 @@ async function failRefund(refundId: string, reason: string) {
   });
 }
 
-const toIntentState = (state: string): IntentState => (state === "refunded" ? "done" : state === "awaiting_deposit" ? "processing" : (state as IntentState));
+const toIntentState = (state: string): IntentState => (state === "refunded" ? "done" : state === "awaiting_deposit" || state === "abandoned" ? "processing" : (state as IntentState));
+const isUnfunded = (state: string) => state === "awaiting_deposit" || state === "abandoned";
 
 export async function applyRefundStatus(refundId: string, status: StatusResponse, now = new Date()) {
   return db().transaction(async (tx) => {
@@ -173,12 +194,20 @@ export async function applyRefundStatus(refundId: string, status: StatusResponse
     if (!row || row.state === "expired") return row ?? null;
     const current = toIntentState(row.state);
     const next = nextIntentState(current, status.status);
-    const patch: Partial<RefundRow> = { providerStatus: status.status, pollFailures: 0, updatedAt: now, nextPollAt: new Date(now.getTime() + 10_000) };
+    const age = now.getTime() - row.createdAt.getTime();
+    const patch: Partial<RefundRow> = { providerStatus: status.status, pollFailures: 0, updatedAt: now, nextPollAt: new Date(now.getTime() + (age < 3_600_000 ? 10_000 : 300_000)) };
     const tx_ = status.swapDetails.destinationChainTxHashes[0]?.hash;
     if (tx_) patch.txHash = tx_;
 
     // A route refund stays out of the payment's state until the merchant's money has actually been seen.
-    if (row.kind === "route" && row.state === "awaiting_deposit" && next === "processing") {
+    if (isUnfunded(row.state) && status.status === "PENDING_DEPOSIT") {
+      // Nothing has arrived. It can still, so this keeps watching until well past the provider's deadline.
+      const deadline = Date.parse((row.quote as QuoteResponse | null)?.quote.deadline ?? "");
+      if (Number.isFinite(deadline) && now.getTime() > deadline + ROUTE_GRACE_MS) {
+        patch.state = "expired";
+        patch.nextPollAt = null;
+      }
+    } else if (row.kind === "route" && isUnfunded(row.state) && next === "processing") {
       patch.state = "processing";
       await tx.update(schema.payments).set({ state: "refund_pending", updatedAt: now }).where(and(eq(schema.payments.id, row.paymentId), eq(schema.payments.state, "settled")));
     } else if (next === "processing") {

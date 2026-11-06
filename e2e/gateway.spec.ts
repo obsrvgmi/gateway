@@ -78,6 +78,7 @@ test("a sign-in link works once", async ({ page }) => {
 test("checkout stays closed until a settlement wallet is connected", async () => {
   await merchant.goto("/dashboard/links/new");
   await merchant.getByLabel("Title").fill("Brand sprint deposit");
+  await merchant.getByRole("button", { name: "Next" }).click();
   await merchant.getByRole("button", { name: "Create link" }).click();
   await expect(merchant.getByRole("heading", { name: "Your link is live" })).toBeVisible();
   linkUrl = (await merchant.locator("div[dir=ltr]").filter({ hasText: "/pay/" }).first().textContent()) ?? "";

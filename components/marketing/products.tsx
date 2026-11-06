@@ -2,10 +2,8 @@
 
 import { useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { RiArrowRightLine, RiCheckLine, RiFileCopyLine, RiLockLine, RiMailLine } from "@remixicon/react";
+import { RiArrowRightLine, RiLockLine } from "@remixicon/react";
 import { Radio as AriaRadio, RadioGroup as AriaRadioGroup } from "react-aria-components";
-import { Button, ButtonLink } from "@/components/base/buttons/button";
-import { toast } from "@/components/base/toast/toast";
 import { TokenMark } from "@/components/brand/token-mark";
 import { CheckoutWidget } from "@/components/checkout/checkout-widget";
 import { NavButton } from "@/components/nav-button";
@@ -13,12 +11,10 @@ import { ASSETS, RECEIVE_ASSETS } from "@/lib/assets";
 import { embedSnippet } from "@/lib/embed";
 import { formatToken } from "@/lib/format";
 import { SITE } from "@/lib/site";
-import { useOrigin } from "@/lib/use-origin";
 import type { AssetSymbol, WidgetRadius } from "@/lib/types";
 import { cx } from "@/utils/cx";
 import { Bus } from "./bus";
 
-const DEMO_LINK = "/pay/lnk_8fk2m1";
 const SERIAL = "lnk_8fk2m1";
 // What the mock shows and the QR encodes. `.example` is reserved, so it can never resolve to someone.
 const DISPLAY_LINK = `pay.gateway.example/${SERIAL}`;
@@ -98,33 +94,13 @@ function PlatePorts() {
 }
 
 function LinkPlate() {
-  const origin = useOrigin();
-  const url = `${origin}${DEMO_LINK}`;
-  const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-      toast.success("Link copied");
-    } catch {
-      toast.error("Couldn't copy", { description: "Your browser blocked clipboard access. Open the link and copy it from the address bar." });
-    }
-  };
-
   return (
     <div className="stage-plate scene-plate reveal">
       <PlatePorts />
       <div className="note-mount"><PaymentNote /></div>
       <div className="tray">
-        <a dir="ltr" href={DEMO_LINK} className="tray-url">{DISPLAY_LINK}</a>
-        <Button variant="secondary" leadingIcon={copied ? RiCheckLine : RiFileCopyLine} onClick={copy} className="tray-action">
-          {copied ? "Copied" : "Copy link"}
-        </Button>
-        <ButtonLink variant="secondary" leadingIcon={RiMailLine} href={`mailto:?subject=${encodeURIComponent("Payment link")}&body=${encodeURIComponent(url)}`} className="tray-action">
-          Email
-        </ButtonLink>
+        <span dir="ltr" className="tray-url">{DISPLAY_LINK}</span>
+        <NavButton href="/login?new=1" variant="secondary" trailingIcon={RiArrowRightLine} className="tray-action">Make your own</NavButton>
       </div>
     </div>
   );

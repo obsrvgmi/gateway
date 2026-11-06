@@ -6,6 +6,7 @@ import { audit } from "../audit";
 import { db, schema, type Db } from "../db";
 import { env } from "../env";
 import { badRequest, conflict, HttpError } from "../http/errors";
+import { provider } from "./provider";
 import type { QuoteRequest, QuoteResponse, TokenInfo } from "./provider/types";
 
 /** A guard failed in a way that means something is wrong upstream, not with the customer's input. */
@@ -49,8 +50,17 @@ export function assertPaymentBounds(usd: number) {
   if (usd > MAX_PAYMENT_USD) throw badRequest(`The maximum payment is $${MAX_PAYMENT_USD}.`, "amount_too_large");
 }
 
+/**
+ * 1Click signs quotes, and that signature is the only proof a deposit address pays the recipient we
+ * asked for. Quotes touching Bitcoin don't verify, with NEAR's own SDK either, dry or live, either way
+ * round (found 2026-11-06). Until NEAR explains why, those routes stay closed with real money.
+ */
+const UNVERIFIABLE_CHAINS = new Set(["btc"]);
+export const hasUnverifiableRoute = (assets: AssetSymbol[]) => provider().kind === "oneclick" && assets.some((asset) => UNVERIFIABLE_CHAINS.has(ASSETS[asset].blockchain));
+
 /** The off switches: `payments` stops everything, `chain:x` and `asset:Y` one route. In-flight payments keep polling. */
 export async function assertRoutesOpen(assets: AssetSymbol[], database: Db = db()) {
+  if (hasUnverifiableRoute(assets)) throw conflict("This payment route isn't available right now. Choose another asset.", "route_unverifiable");
   const keys = ["payments", ...assets.flatMap((asset) => [`asset:${asset}`, `chain:${ASSETS[asset].blockchain}`])];
   const paused = await database
     .select({ key: schema.routeControls.key })

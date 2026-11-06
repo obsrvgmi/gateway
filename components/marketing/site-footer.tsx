@@ -11,9 +11,10 @@ const LINKS = [
   { href: "#links", label: "Payment Links" },
   { href: "#widgets", label: "Widgets" },
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/pay/lnk_8fk2m1", label: "Try a payment" },
+  { href: "/docs", label: "Developers" },
+  { href: "/status", label: "Status" },
 ];
-const MICROPRINT = "SPECIMEN  NO FUNDS MOVE  ANY ASSET IN  ONE ASSET OUT  ".repeat(14);
+const MICROPRINT = "NON-CUSTODIAL  ANY ASSET IN  ONE ASSET OUT  ".repeat(16);
 
 /**
  * The reverse of the note: the same ink in both themes, so the page always ends on the same frame.
@@ -34,7 +35,7 @@ export function SiteFooter() {
           <h2 className="foot-title">Any asset in.<br /> One asset out.</h2>
           <div className="foot-actions">
             <NavButton href="/dashboard/links/new" trailingIcon={RiArrowRightLine} className="stage-cta">Create Payment Link</NavButton>
-            <NavButton href="/pay/lnk_8fk2m1" variant="secondary" className="stage-cta">Try a payment</NavButton>
+            <NavButton href="/docs" variant="secondary" className="stage-cta">Read the docs</NavButton>
           </div>
         </div>
 

@@ -30,6 +30,12 @@ const toUsd = (base: bigint, assetId: string) => Number(baseToDecimal(base, asse
 const fakeHash = () => `sim_${randomBytes(16).toString("hex")}`;
 const ref = () => ({ hash: fakeHash(), explorerUrl: "" });
 
+/** Re-signs a changed quote, so a test can reach the guards behind the signature check. */
+export function signSimQuote(response: QuoteResponse) {
+  response.signature = `ed25519:${base58.encode(ed25519.sign(quoteMessage(response as SignedQuote), secretKey))}`;
+  return response;
+}
+
 /** Same shapes and lifecycle as 1Click, no network and no money. Prices are the fixed illustrative ones. */
 export class SimProvider implements SwapProvider {
   readonly kind = "sim" as const;

@@ -44,7 +44,7 @@ export function assertWebhookUrl(value: string) {
  * The address is checked inside the socket's own DNS lookup, so a hostname can't pass the check and then
  * resolve somewhere else when connecting. Redirects aren't followed.
  */
-export function postWebhook(urlString: string, body: string, headers: Record<string, string>): Promise<number> {
+export async function postWebhook(urlString: string, body: string, headers: Record<string, string>): Promise<number> {
   const url = assertWebhookUrl(urlString);
   const allowPrivate = env().WEBHOOKS_ALLOW_PRIVATE;
   return new Promise((resolve, reject) => {

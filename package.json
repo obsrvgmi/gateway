@@ -31,11 +31,13 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx server/db/migrate.ts",
-    "build:worker": "esbuild worker/index.ts server/db/migrate.ts scripts/ops.ts --bundle --platform=node --format=esm --packages=external --conditions=react-server --outdir=dist --out-extension:.js=.mjs --tsconfig=tsconfig.json",
+    "build:worker": "esbuild worker/index.ts server/db/migrate.ts scripts/ops.ts --bundle --platform=node --format=esm --external:pg-native --conditions=react-server --outdir=dist --out-extension:.js=.mjs --tsconfig=tsconfig.json \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
     "worker": "tsx --conditions=react-server --tsconfig tsconfig.json worker/index.ts",
     "dev:db": "tsx scripts/dev-db.ts",
     "ops": "tsx scripts/ops.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:live": "vitest run --config vitest.live.config.mts",
+    "test:mutation": "node scripts/mutate-guards.mjs"
   },
   "dependencies": {
     "@internationalized/date": "^3.12.4",

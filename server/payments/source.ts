@@ -4,7 +4,7 @@ import { ASSETS, ASSET_SYMBOLS } from "@/lib/assets";
 import type { AssetSymbol } from "@/lib/types";
 import { db, schema } from "../db";
 import { conflict, notFound } from "../http/errors";
-import { pausedRoutes, routeMinimumUsd } from "./guards";
+import { hasUnverifiableRoute, pausedRoutes, routeMinimumUsd } from "./guards";
 
 export type Organization = typeof schema.organizations.$inferSelect;
 export type LinkRow = typeof schema.paymentLinks.$inferSelect;
@@ -85,7 +85,7 @@ export async function payOptions(source: Source): Promise<PayOption[]> {
       name: asset.name,
       chain: asset.chain,
       minimumUsd: routeMinimumUsd(symbol, recipientType),
-      paused: paused.has("payments") || paused.has(`asset:${symbol}`) || paused.has(`chain:${asset.blockchain}`) || paused.has(`asset:${source.receiveAsset}`) || paused.has(`chain:${ASSETS[source.receiveAsset].blockchain}`),
+      paused: hasUnverifiableRoute([symbol, source.receiveAsset]) || paused.has("payments") || paused.has(`asset:${symbol}`) || paused.has(`chain:${asset.blockchain}`) || paused.has(`asset:${source.receiveAsset}`) || paused.has(`chain:${ASSETS[source.receiveAsset].blockchain}`),
     };
   });
 }

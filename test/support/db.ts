@@ -56,8 +56,8 @@ export async function createOrg(overrides: Partial<typeof schema.organizations.$
 }
 
 export async function createLink(orgId: string, overrides: Partial<typeof schema.paymentLinks.$inferInsert> = {}) {
-  const id = newId("lnk_");
-  await db().insert(schema.paymentLinks).values({ id, orgId, title: "Deposit", amountUsd: "50.00", receiveAsset: "USDC", ...overrides });
+  const id = overrides.id ?? newId("lnk_");
+  await db().insert(schema.paymentLinks).values({ orgId, title: "Deposit", amountUsd: "50.00", receiveAsset: "USDC", ...overrides, id });
   return id;
 }
 

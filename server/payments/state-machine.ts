@@ -76,7 +76,11 @@ export function nextPollDelayMs(input: { state: PaymentState; now: number; creat
   if (isDeadOnArrival(state) || failures >= MAX_POLL_FAILURES) return null;
   const lastDay = (deadline ?? createdAt) + LATE_TRACKING_DAYS * DAY;
   if (failures > 0) return now > lastDay ? null : Math.min(30_000 * 2 ** Math.min(failures, 6), 1_800_000);
-  if (state === "deposit_seen" || state === "processing" || state === "incomplete_deposit") return 10_000;
+  // Money in flight always gets an answer, so these never stop, however long the provider takes.
+  if (state === "deposit_seen" || state === "processing" || state === "incomplete_deposit") {
+    const inFlight = now - createdAt;
+    return inFlight < 3_600_000 ? 10_000 : inFlight < DAY ? 60_000 : 600_000;
+  }
   if (now > lastDay) return null;
   // A finished address is only checked for a second deposit reaching the provider.
   if (isFinalForProvider(state)) return 6 * 3_600_000;

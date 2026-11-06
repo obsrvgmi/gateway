@@ -58,7 +58,7 @@ export default async function globalSetup() {
 
   const children: ChildProcess[] = [
     spawn("node", [".next/standalone/server.js"], { env, stdio: "inherit" }),
-    spawn("node", ["--conditions=react-server", "dist/worker/index.mjs"], { env, stdio: ["ignore", "ignore", "inherit"] }),
+    spawn("node", ["dist/worker/index.mjs"], { env, stdio: ["ignore", "ignore", "inherit"] }),
   ];
 
   // A merchant's server, recording what it receives so a test can check each signature.

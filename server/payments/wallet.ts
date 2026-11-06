@@ -1,6 +1,6 @@
 import "server-only";
 import { createHmac } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getAddress, isAddress, recoverMessageAddress, type Hex } from "viem";
 import { audit } from "../audit";
 import { db, schema } from "../db";
@@ -80,7 +80,7 @@ export async function setSettlementWallet(input: { orgId: string; userId: string
     const balances = await readBalances(org.walletAddress);
     const [held, moving] = await Promise.all([heldAmounts(org), inFlightAmounts(org.id)]);
     if ([...balances.values()].some((amount) => amount > 0n) || held.size > 0 || moving.size > 0) throw conflict("Pay out this wallet's balance before changing it.", "balance_not_empty");
-    const arriving = await db().select({ id: schema.payments.id }).from(schema.payments).where(and(eq(schema.payments.orgId, org.id), eq(schema.payments.recipient, org.walletAddress), eq(schema.payments.state, "processing"))).limit(1);
+    const arriving = await db().select({ id: schema.payments.id }).from(schema.payments).where(and(eq(schema.payments.orgId, org.id), eq(schema.payments.recipient, org.walletAddress), inArray(schema.payments.state, ["deposit_seen", "incomplete_deposit", "processing"]))).limit(1);
     if (arriving.length) throw conflict("Wait for payments in progress to land before changing your wallet.", "payments_in_flight");
   }
 

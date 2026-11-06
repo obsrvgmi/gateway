@@ -1,8 +1,9 @@
 import "server-only";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
+import { getAddress } from "viem";
 import { isValidAddress, addressError, normalizeAddress } from "@/lib/address";
-import { ASSETS } from "@/lib/assets";
+import { ASSETS, type AddressKind } from "@/lib/assets";
 import type { AssetSymbol } from "@/lib/types";
 import { audit } from "../audit";
 import { db, schema } from "../db";
@@ -23,13 +24,16 @@ const SLIPPAGE_BPS = 100;
 /** A quote costing more than this above the merchant's price is not one a customer should see. */
 const MAX_PREMIUM = 0.08;
 
-/** Valid-format addresses for a price preview only. Dry quotes can't issue an address, so no funds can reach these. */
-const PREVIEW_REFUND: Record<string, string> = {
-  evm: "0x000000000000000000000000000000000000dEaD",
+/**
+ * Valid-format addresses for a price preview only. Dry quotes can't issue an address, so no funds can
+ * reach these. The provider refuses burn addresses and token contracts, so these are plain accounts.
+ * EVM uses the merchant's own wallet.
+ */
+const PREVIEW_REFUND: Record<Exclude<AddressKind, "evm">, string> = {
   btc: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
-  sol: "So11111111111111111111111111111111111111112",
-  near: "wrap.near",
-  tron: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+  sol: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+  near: "near",
+  tron: "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7",
 };
 
 function appFees(): QuoteRequest["appFees"] {
@@ -97,7 +101,8 @@ export async function previewQuote(source: Source, input: { payAsset: AssetSymbo
   assertAboveRouteMinimum(input.payAsset, usd, target.recipientType);
   await assertRoutesOpen([input.payAsset, source.receiveAsset]);
   const receiveBase = await amounts(source, usd);
-  const request = buildRequest({ dry: true, source, payAsset: input.payAsset, receiveBase, refundTo: PREVIEW_REFUND[ASSETS[input.payAsset].addressKind], ...target });
+  const kind = ASSETS[input.payAsset].addressKind;
+  const request = buildRequest({ dry: true, source, payAsset: input.payAsset, receiveBase, refundTo: kind === "evm" ? getAddress(target.recipient) : PREVIEW_REFUND[kind], ...target });
   const response = await provider().quote(request).catch(translate);
   assertQuoteEcho(request, response);
   assertQuoteSigned(response, provider().quoteKey);
