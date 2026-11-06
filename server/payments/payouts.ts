@@ -241,7 +241,7 @@ export async function pollDuePayouts(limit = 25) {
   const claimed = await db().execute<{ id: string; state: string; intent: unknown; signature: string | null; deposit_address: string; deposit_memo: string | null; poll_failures: number }>(sql`
     update payouts set next_poll_at = now() + interval '60 seconds'
     where id in (
-      select id from payouts where next_poll_at is not null and next_poll_at <= now() and deposit_address is not null
+      select id from payouts where next_poll_at is not null and next_poll_at <= now() and deposit_address is not null and live = ${provider().kind === "oneclick"}
       order by next_poll_at limit ${limit} for update skip locked
     )
     returning id, state, intent, signature, deposit_address, deposit_memo, poll_failures

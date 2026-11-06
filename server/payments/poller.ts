@@ -92,13 +92,17 @@ async function recordFailure(paymentId: string, error: unknown, now = new Date()
   if (failures === MAX_POLL_FAILURES) await audit(db(), { orgId: row.orgId, actorType: "system", action: "payment.polling_stopped", target: paymentId, detail: { failures } });
 }
 
-/** Claims a batch by pushing its next poll out, so another worker can't take the same rows meanwhile. */
+/**
+ * Claims a batch by pushing its next poll out, so another worker can't take the same rows meanwhile.
+ * Only rows from the active mode: a real address asked of the simulator would look like a failure, and
+ * enough of those would stop real money being tracked. Those rows wait for live mode to come back.
+ */
 export async function pollDuePayments(limit = 25) {
   const claimed = await db().execute<{ id: string; deposit_address: string; deposit_memo: string | null }>(sql`
     update payments set next_poll_at = now() + make_interval(secs => ${LEASE_SECONDS})
     where id in (
       select id from payments
-      where next_poll_at is not null and next_poll_at <= now() and deposit_address is not null
+      where next_poll_at is not null and next_poll_at <= now() and deposit_address is not null and live = ${provider().kind === "oneclick"}
       order by next_poll_at limit ${limit} for update skip locked
     )
     returning id, deposit_address, deposit_memo

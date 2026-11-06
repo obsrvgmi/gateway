@@ -349,6 +349,20 @@ describe("lifecycle against the simulator", () => {
     expect(row.nextPollAt!.getTime()).toBeGreaterThan(Date.now());
   });
 
+  it("polls only rows from the active mode, so real money is never asked of the simulator", async () => {
+    const { orgId } = await merchantOrg();
+    const { result } = await session(orgId);
+    await db().update(schema.payments).set({ live: true, nextPollAt: new Date(Date.now() - 1000) }).where(eq(schema.payments.id, result.id));
+    const statusCalled = vi.fn();
+    setProviderForTests(hostile({ status: statusCalled as never }));
+    await pollDuePayments();
+    expect(statusCalled).not.toHaveBeenCalled();
+    const row = await paymentById(result.id);
+    expect(row.pollFailures).toBe(0);
+    expect(row.nextPollAt!.getTime()).toBeLessThan(Date.now());
+    await db().update(schema.payments).set({ nextPollAt: null }).where(eq(schema.payments.id, result.id));
+  });
+
   it("gives a payment to one poller at a time", async () => {
     const { orgId } = await merchantOrg();
     const { result } = await session(orgId);

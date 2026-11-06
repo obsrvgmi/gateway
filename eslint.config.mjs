@@ -22,8 +22,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Agent tooling, not application code.
+    // Agent tooling and build output, not application code.
     ".agents/**",
+    "dist/**",
+    "packages/react/dist/**",
+    "test-results/**",
+    "playwright-report/**",
   ]),
 ]);
 

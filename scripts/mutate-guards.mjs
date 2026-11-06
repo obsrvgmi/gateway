@@ -134,6 +134,8 @@ const MUTANTS = [
   ["state: payout never un-sends", SM, 'if (current === "done" || current === "awaiting_signature" || current === "expired") return null;', "", ["test/state-machine.test.ts"]],
   ["poll: outage changes nothing", "server/payments/poller.ts", "const delay = nextPollDelayMs({ state: row.state as PaymentState, now: now.getTime(), createdAt: row.createdAt.getTime(), deadline: row.deadline?.getTime() ?? null, failures });", "const delay = 0; await db().update(schema.payments).set({ state: \"failed\" }).where(eq(schema.payments.id, paymentId));", ENGINE],
 
+  ["poll: only the active mode", "server/payments/poller.ts", ' and live = ${provider().kind === "oneclick"}', "", ENGINE],
+
   // Live gates
   ["live: acknowledgement", "server/env.ts", 'if (config.LIVE_PAYMENTS_ACK !== LIVE_ACK_PHRASE) failures.push', "if (false) failures.push", ENGINE],
   ["live: api key", "server/env.ts", 'if (!config.ONECLICK_API_KEY) failures.push', "if (false) failures.push", ENGINE],
