@@ -1,19 +1,21 @@
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { privateKeyToAccount } from "viem/accounts";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ASSETS } from "@/lib/assets";
 import { db, schema } from "@/server/db";
 import { resetEnv } from "@/server/env";
 import { newId } from "@/server/ids";
 import { createSession } from "@/server/payments/checkout";
 import { assertAboveDestinationMinimum } from "@/server/payments/guards";
+import { applyPaymentStatus } from "@/server/payments/poller";
 import { applyPayoutStatus, preparePayout, submitPayout } from "@/server/payments/payouts";
 import { provider, setProviderForTests } from "@/server/payments/provider";
 import { signSimQuote, SimProvider } from "@/server/payments/provider/sim";
 import type { QuoteRequest, QuoteResponse, SwapProvider } from "@/server/payments/provider/types";
+import { applyRefundStatus, prepareRefund, submitRefund } from "@/server/payments/refunds";
 import { loadSource } from "@/server/payments/source";
-import { issueChallenge } from "@/server/payments/wallet";
+import { addDestination, issueChallenge } from "@/server/payments/wallet";
 import { createLink, createOrg, freshDatabase, WALLET_KEY } from "./support/db";
 
 const merchant = privateKeyToAccount(WALLET_KEY);
@@ -200,5 +202,72 @@ describe("a stored destination", () => {
     await db().insert(schema.routeControls).values({ key: "asset:USDC", paused: true });
     await expect(preparePayout(request)).rejects.toMatchObject({ code: "route_paused" });
     await db().delete(schema.routeControls);
+  });
+});
+
+describe("refunds", () => {
+  async function settledPayment(amount = "50000000") {
+    await fund(100_000_000n);
+    const fixture = await createOrg({ walletAddress: wallet });
+    const source = await loadSource(await createLink(fixture.orgId));
+    const session = await createSession(source, { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: key() });
+    await applyPaymentStatus(session.id, { status: "SUCCESS", updatedAt: new Date().toISOString(), swapDetails: { amountOut: amount, originChainTxHashes: [], destinationChainTxHashes: [] } });
+    return { ...fixture, paymentId: session.id };
+  }
+  const SUCCESS = { status: "SUCCESS" as const, updatedAt: new Date().toISOString(), swapDetails: { originChainTxHashes: [], destinationChainTxHashes: [] } };
+  const asIntent = async (prepared: Awaited<ReturnType<typeof prepareRefund>>) => {
+    if (prepared.kind !== "intent") throw new Error("expected an intent refund");
+    return { prepared, signature: await merchant.signMessage({ message: prepared.payload }) };
+  };
+
+  it("can't reach another workspace's payment", async () => {
+    const { paymentId } = await settledPayment();
+    const other = await createOrg({ walletAddress: wallet });
+    await expect(prepareRefund({ orgId: other.orgId, paymentId, userId: other.userId })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("refuses a sanctioned customer wallet", async () => {
+    const { orgId, userId, paymentId } = await settledPayment();
+    await db().insert(schema.screenedAddresses).values({ address: CUSTOMER.toLowerCase(), source: "test" });
+    await expect(prepareRefund({ orgId, paymentId, userId })).rejects.toMatchObject({ code: "not_permitted" });
+    await db().delete(schema.screenedAddresses);
+  });
+
+  it("checks what's left again at send time, so two prepared refunds can't both go through", async () => {
+    const { orgId, userId, paymentId } = await settledPayment();
+    const first = await asIntent(await prepareRefund({ orgId, paymentId, amountBase: "30000000", userId }));
+    const second = await asIntent(await prepareRefund({ orgId, paymentId, amountBase: "30000000", userId }));
+    await submitRefund({ orgId, refundId: first.prepared.id, signature: first.signature, userId });
+    await applyRefundStatus(first.prepared.id, SUCCESS);
+    await expect(submitRefund({ orgId, refundId: second.prepared.id, signature: second.signature, userId })).rejects.toMatchObject({ code: "refund_too_large" });
+  });
+
+  it("sends once under concurrent clicks", async () => {
+    const { orgId, userId, paymentId } = await settledPayment();
+    const { prepared, signature } = await asIntent(await prepareRefund({ orgId, paymentId, userId }));
+    const submitIntent = vi.fn(async () => ({ intentHash: "h" }));
+    setProviderForTests(hostile({ submitIntent }));
+    await Promise.allSettled(Array.from({ length: 4 }, () => submitRefund({ orgId, refundId: prepared.id, signature, userId })));
+    expect(submitIntent).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("adding a destination", () => {
+  const OTHER = "0x000000000000000000000000000000000000dEaD";
+
+  it("needs a signature over this address, in this workspace", async () => {
+    const { orgId, userId } = await createOrg({ walletAddress: wallet });
+    const forOther = issueChallenge("destination", orgId, "0x0000000000000000000000000000000000000001");
+    await expect(addDestination({ orgId, userId, label: "x", address: OTHER, message: forOther, signature: await merchant.signMessage({ message: forOther }) })).rejects.toMatchObject({ code: "challenge_invalid" });
+    const made = "Gateway account action\n\nAllow payouts to " + OTHER;
+    await expect(addDestination({ orgId, userId, label: "x", address: OTHER, message: made, signature: await merchant.signMessage({ message: made }) })).rejects.toMatchObject({ code: "challenge_invalid" });
+  });
+
+  it("refuses a sanctioned address", async () => {
+    const { orgId, userId } = await createOrg({ walletAddress: wallet });
+    await db().insert(schema.screenedAddresses).values({ address: OTHER.toLowerCase(), source: "test" });
+    const message = issueChallenge("destination", orgId, OTHER);
+    await expect(addDestination({ orgId, userId, label: "x", address: OTHER, message, signature: await merchant.signMessage({ message }) })).rejects.toMatchObject({ code: "not_permitted" });
+    await db().delete(schema.screenedAddresses);
   });
 });

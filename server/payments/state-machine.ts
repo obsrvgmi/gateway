@@ -45,9 +45,9 @@ const PROGRESS: Partial<Record<PaymentState, number>> = {
  */
 export function nextPaymentState(current: PaymentState, status: ProviderStatus): PaymentState | null {
   if (status === "PENDING_DEPOSIT") return null;
-  if (current === "refund_pending" || current === "refunded" || current === "quoting" || current === "quote_failed") return null;
   const target = FROM_PROVIDER[status];
   if (target === current) return null;
+  // States with no progress rank are never moved by a poll: no address yet, or a refund owns them.
   const from = PROGRESS[current];
   const to = PROGRESS[target];
   if (from === undefined || to === undefined) return null;

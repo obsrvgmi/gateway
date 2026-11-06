@@ -327,13 +327,26 @@ describe("live mode closes the test-only routes", () => {
     resetEnv();
   };
 
-  it("has no 'simulate a payment' route", async () => {
+  const paymentRow = async (live: boolean) => {
+    const { orgId } = await createOrg();
+    const id = newId("pay_");
+    await db().insert(schema.payments).values({ id, orgId, sourceType: "link", sourceId: "lnk_x", sourceName: "x", state: "awaiting_deposit", payAsset: "ETH", receiveAsset: "USDC", usd: "1", receiveBase: "1", payer: "x", settlementMode: "balance", recipient: "x", recipientType: "INTENTS", depositAddress: `sim_${id}`, live });
+    return id;
+  };
+
+  it("has no 'simulate a payment' route, even for a payment that exists", async () => {
+    const id = await paymentRow(false);
     goLive();
     try {
-      expect((await call(simPay as Handler, { params: { id: "pay_x" }, body: { scenario: "pay" } })).status).toBe(404);
+      expect((await call(simPay as Handler, { params: { id }, body: { scenario: "pay" } })).status).toBe(404);
     } finally {
       goSim();
     }
+  });
+
+  it("can't fake a real payment from test mode", async () => {
+    const id = await paymentRow(true);
+    expect((await call(simPay as Handler, { params: { id }, body: { scenario: "pay" } })).status).toBe(404);
   });
 
   it("has no sample data", async () => {

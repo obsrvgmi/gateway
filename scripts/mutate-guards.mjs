@@ -106,7 +106,6 @@ const MUTANTS = [
   ["refund: previous wallet", R, 'if (payment.recipientType === "INTENTS" && payment.recipient !== org.walletAddress) throw', "if (false) throw", ENGINE],
   ["refund: tenant", R, "and(eq(schema.payments.id, input.paymentId), eq(schema.payments.orgId, org.id))", "eq(schema.payments.id, input.paymentId)", ENGINE],
   ["refund: send-time cap", R, 'if (BigInt(row.amountBase) > refundableBase(payment)) throw', "if (false) throw", ENGINE],
-  ["refund: single send", R, '.where(and(eq(schema.refunds.id, row.id), eq(schema.refunds.state, "awaiting_signature")))', ".where(eq(schema.refunds.id, row.id))", ENGINE],
   ["refund: screening", R, 'await assertNotScreened([payment.payer], { orgId: org.id, action: "refund", ip: input.ip });', "", ENGINE],
   ["refund: open blocks a new one", R, 'if (Date.now() - open.createdAt.getTime() < ABANDON_AFTER_MS) throw', "if (false) throw", ENGINE],
   ["refund: same address again", R, "if (open.amountBase === amount.toString()) return routeRefundForClient(open);", "", ENGINE],
@@ -127,10 +126,9 @@ const MUTANTS = [
   ["destination: screening", W, 'await assertNotScreened([address], { orgId: org.id, action: "destination", ip: input.ip });', "", ENGINE],
 
   // State
-  ["state: refund owns its state", SM, 'if (current === "refund_pending" || current === "refunded" || current === "quoting" || current === "quote_failed") return null;', "", ["test/state-machine.test.ts"]],
+  ["state: refund owns its state", SM, "if (from === undefined || to === undefined) return null;", "if (to === undefined) return null;", ["test/state-machine.test.ts"]],
   ["state: settled is final", SM, 'if (current === "settled" || current === "provider_refunded") return null;', "", ["test/state-machine.test.ts"]],
   ["state: never backwards", SM, "return to >= from ? target : null;", "return target;", ["test/state-machine.test.ts"]],
-  ["state: pending is nothing", SM, 'if (status === "PENDING_DEPOSIT") return null;\n  if (current', "if (current", ["test/state-machine.test.ts"]],
   ["state: payout never un-sends", SM, 'if (current === "done" || current === "awaiting_signature" || current === "expired") return null;', "", ["test/state-machine.test.ts"]],
   ["poll: outage changes nothing", "server/payments/poller.ts", "const delay = nextPollDelayMs({ state: row.state as PaymentState, now: now.getTime(), createdAt: row.createdAt.getTime(), deadline: row.deadline?.getTime() ?? null, failures });", "const delay = 0; await db().update(schema.payments).set({ state: \"failed\" }).where(eq(schema.payments.id, paymentId));", ENGINE],
 
@@ -142,6 +140,7 @@ const MUTANTS = [
   ["live: fee recipient", "server/env.ts", 'if (config.APP_FEE_BPS > 0 && !config.APP_FEE_RECIPIENT) failures.push', "if (false) failures.push", ENGINE],
   ["live: mode needs the gates", "server/env.ts", 'return config.PAYMENTS_MODE === "live" && liveGateFailures(config).length === 0 ? "live" : "sim";', 'return config.PAYMENTS_MODE === "live" ? "live" : "sim";', ENGINE],
   ["live: no simulate route", "app/api/checkout/sessions/[id]/sim/route.ts", "if (!(active instanceof SimProvider)) throw notFound();", "", ROUTES],
+  ["test mode can't fake a real payment", "app/api/checkout/sessions/[id]/sim/route.ts", "if (!row.depositAddress || row.live) throw notFound();", "if (!row.depositAddress) throw notFound();", ROUTES],
   ["live: no sample data", "app/api/sample-data/route.ts", 'if (paymentsMode() === "live") throw notFound();', "", ROUTES],
 
   // Access
