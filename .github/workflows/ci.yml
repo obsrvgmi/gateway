@@ -35,7 +35,7 @@ jobs:
           NEXT_PUBLIC_TEST_BUILD: "true"
       - name: End-to-end
         run: |
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
           npm run test:e2e
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high

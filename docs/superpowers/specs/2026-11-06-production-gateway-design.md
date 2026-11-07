@@ -144,7 +144,7 @@ CSP and security headers, with `frame-ancestors 'none'` everywhere except `/embe
 - Integration: route handlers against real Postgres (`embedded-postgres` locally and in CI), with a fake 1Click server for contract behaviour.
 - Contract: opt-in live tests (`LIVE_SMOKE=1`) for `/v0/tokens`, dry quotes and signature verification.
 - Signature format: an erc191 payload signed with a throwaway key, checked through `intents.near` `simulate_intents`.
-- E2E: Playwright on Chromium, sim mode: sign up, create link, pay, see it in the dashboard, webhook received.
+- E2E: Playwright on Chromium and WebKit, sim mode: sign up, create link, pay, see it in the dashboard, webhook received.
 - Mutation: delete each money guard and confirm a test dies.
 - Review: two disjoint audit rounds on money code, one of them outside-world only.
 

@@ -15,5 +15,9 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // The closest automated stand-in for Safari. It isn't Safari itself, so a real iPhone still needs a look before launch.
+    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+  ],
 });

@@ -251,7 +251,7 @@ Everything behind the dashboard and checkout is real. In test mode, `SimProvider
 - Verification: CI (`.github/workflows/ci.yml`) runs lint, typecheck, tests, build, end-to-end and a production dependency audit. `test:live` and `test:mutation` run by hand: run both before any change to money code ships.
 - Git: `origin` is github.com/obsrvgmi/gateway (public), default branch `main`. README images live in `.github/assets/`; the social preview there must be uploaded by hand in repo settings. `LICENSE` is an all-rights-reserved notice until the owner picks a licence.
 - Not done, and needs a person: NEAR partner key and written answers, a lawyer's read, a canary with real funds, hosting, a real name, publishing `@gateway/react`. See `docs/runbooks/going-live.md`.
-- Known gaps: `useUnsavedGuard` can't stop the browser's Back button. Playwright's WebKit build segfaults on this Mac, so Safari interactive flows have not been run. Merchant wallets must be EOAs. Bitcoin is closed in live mode. Known limits are listed in the design.
+- Known gaps: `useUnsavedGuard` can't stop the browser's Back button. End-to-end runs on Chromium and Playwright's WebKit, which stands in for Safari but isn't Safari, so a real iPhone still needs a look. Merchant wallets must be EOAs. Bitcoin is closed in live mode. Known limits are listed in the design.
 
 ## Working in parallel
 
