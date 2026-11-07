@@ -169,7 +169,7 @@ function ProfileCard({ settings }: { settings: Settings }) {
       <div className="dash-well flex flex-wrap items-center justify-between gap-2 rounded-xl p-2.5">
         <span className="flex min-w-0 flex-col">
           <span className="text-body-medium">Payout destination</span>
-          <span dir="ltr" className="truncate text-start text-caption-1-regular text-text-secondary">{shortAddress(settings.walletAddress)}</span>
+          <span dir="ltr" className="truncate text-start text-caption-1-regular text-text-secondary">{settings.walletAddress ? shortAddress(settings.walletAddress) : "None yet. Your settlement wallet becomes the first."}</span>
         </span>
         <NavButton href="/dashboard/payouts" variant="secondary" size="small" trailingIcon={RiArrowRightLine}>Manage payouts</NavButton>
       </div>

@@ -85,7 +85,7 @@ Routes:
 | `/dashboard/widgets/new` | `.../widgets/new/page.tsx` | Customize widget (identity, logo, amount, suggested amounts, accepted assets, look, email, after-payment), preview on a light or dark page at two widths, embed snippet |
 | `/dashboard/widgets/[id]/edit` | `.../widgets/[id]/edit/page.tsx` | Same builder as `new`, reopening a saved widget |
 | `/dashboard/payments` | `.../payments/page.tsx` | Summary strip, filters and chips, sortable table (list on narrow screens), bulk actions, status and asset rail, drawer with timeline. Filters seed from `?q= status= asset= type= source= chain= range=` and `from= to= label=` (ms, for one chart bar) |
-| `/dashboard/payouts` | `.../payouts/page.tsx` | Balance, next payout, schedule, refund window, hold releases, destinations, runs, history, pay-out dialog, retry, CSV |
+| `/dashboard/payouts` | `.../payouts/page.tsx` | Balance, next payout, schedule, refund window, hold releases, destinations, runs, history, pay-out dialog, retry, CSV. Shows every control from day one (Settings' "Manage payouts" lands here), and `SettlementCard` on top until a wallet is connected |
 | `/dashboard/settings` | `.../settings/page.tsx` | Tabs (`?tab=`): settlement wallet, business and branding, developers, team and alerts, workspace (theme, sample data in test mode, audit log). At `@ultra` the tabs go and every section shows at once. Payout rules live on `/dashboard/payouts` |
 
 Each page renders a `components/dashboard/views/*` component; `app/dashboard/layout.tsx` wraps them in `DashboardShell` and imports `app/dashboard/dashboard.css` (chart hues, `--viz-primary`, a darker focus ring, the surface restatement, rail, top bar and strip styles, skeleton and feed motion). `app/dashboard/error.tsx` is the error boundary.

@@ -110,6 +110,18 @@ test("checkout stays closed until a settlement wallet is connected", async () =>
   await customer.close();
 });
 
+test("before a wallet, Manage payouts leads to the payout settings and offers the wallet", async () => {
+  await merchant.goto("/dashboard/settings");
+  await expect(merchant.getByText("None yet. Your settlement wallet becomes the first.")).toBeVisible();
+  await merchant.getByRole("link", { name: "Manage payouts" }).click();
+  await expect(merchant).toHaveURL(/\/dashboard\/payouts/);
+  await expect(merchant.getByRole("radiogroup", { name: "Payout schedule" })).toBeVisible();
+  await expect(merchant.getByRole("heading", { name: "Where it goes" })).toBeVisible();
+  await expect(merchant.getByText("Connect your settlement wallet. It becomes your first destination.")).toBeVisible();
+  await expect(merchant.getByRole("button", { name: "Add" })).toBeDisabled();
+  await expect(merchant.getByRole("button", { name: "Connect wallet" })).toBeVisible();
+});
+
 test("the merchant connects a settlement wallet by signing", async () => {
   await merchant.goto("/dashboard/settings");
   await merchant.getByRole("button", { name: "Connect wallet" }).click();

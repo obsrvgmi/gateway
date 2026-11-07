@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from 
 import { toast } from "@/components/base/toast/toast";
 import { TokenMark } from "@/components/brand/token-mark";
 import { NavButton } from "@/components/nav-button";
+import { SettlementCard } from "../settlement-card";
 import { formatToken, formatUsd, shortAddress } from "@/lib/format";
 import { metricsNow } from "@/lib/metrics";
 import { failedPayouts, formatPayoutDate, HOLD_OPTIONS, isWalletAddress, ledger, nextPayoutAt, nextPayoutEstimate, payoutFailureText } from "@/lib/payouts";
@@ -175,18 +176,12 @@ export function PayoutsView() {
     />
   );
 
-  if (payments.length === 0 && payouts.length === 0) {
-    return (
-      <>
-        {header}
-        <Panel><EmptyState icon={RiBankLine} title="Nothing to pay out yet" description="Your balance builds here once customers pay. Share a link to take your first payment." action={<NavButton href="/dashboard/links/new">Create payment link</NavButton>} /></Panel>
-      </>
-    );
-  }
-
+  // No early empty state: Settings sends people here to manage payouts, so the controls must show from day one.
   return (
     <>
       {header}
+
+      {!settlement.wallet && <SettlementCard />}
 
       {failed.slice(0, 2).map((payout) => (
         <div key={payout.id} role="alert" className="dash-plate flex flex-wrap items-center gap-3 rounded-2xl p-3">
@@ -206,7 +201,7 @@ export function PayoutsView() {
             <div className="flex min-w-0 flex-col gap-0.5">
               <h2 className="text-body-regular text-text-secondary">Available to pay out</h2>
               <p className="text-display-3-semibold tracking-[-0.02em] tabular-nums [overflow-wrap:anywhere]">{formatUsd(position.availableUsd)}</p>
-              <p className="text-caption-1-regular text-text-secondary">{settlement.wallet ? (settlement.balancesFresh ? "In your settlement account, controlled by your wallet. Gateway never holds it." : "We couldn't read your balance just now. It's safe, and this updates on its own.") : "Connect your settlement wallet in Settings to take payments."}</p>
+              <p className="text-caption-1-regular text-text-secondary">{settlement.wallet ? (settlement.balancesFresh ? "In your settlement account, controlled by your wallet. Gateway never holds it." : "We couldn't read your balance just now. It's safe, and this updates on its own.") : "Connect your settlement wallet to take payments."}</p>
             </div>
             <Button leadingIcon={RiBankLine} disabled={position.availableUsd <= 0} onClick={() => setPaying(true)}>Pay out now</Button>
           </div>
@@ -253,7 +248,7 @@ export function PayoutsView() {
             <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background-primary-default"><RiWalletLine className="size-4.5 text-foreground-icon-secondary" aria-hidden /></span>
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-body-medium">{destination?.label ?? "No destination"}</span>
-              <span dir="ltr" className="truncate text-start text-caption-1-regular text-text-secondary">{destination ? shortAddress(destination.address) : "Add one below"}</span>
+              <span dir="ltr" className="truncate text-start text-caption-1-regular text-text-secondary">{destination ? shortAddress(destination.address) : settlement.wallet ? "Add one below" : "Connect your wallet first"}</span>
             </span>
             <span className="shrink-0 text-caption-1-regular text-text-secondary tabular-nums">Min {formatUsd(minimumUsd).replace(".00", "")}</span>
           </div>
@@ -275,7 +270,9 @@ export function PayoutsView() {
           ) : <p className="text-body-regular text-text-secondary">Nothing is on hold right now.</p>}
         </Panel>
 
-        <Panel title="Where it goes" actions={<Button variant="secondary" size="small" leadingIcon={RiAddLine} onClick={() => setAdding(true)}>Add</Button>} className="col-span-12 @2xl:col-span-6 @5xl:col-span-4 @wide:col-start-9 @wide:row-start-3 @ultra:col-span-3 @ultra:col-start-10 @ultra:row-start-1">
+        <Panel title="Where it goes" actions={<Button variant="secondary" size="small" leadingIcon={RiAddLine} disabled={!settlement.wallet} onClick={() => setAdding(true)}>Add</Button>} className="col-span-12 @2xl:col-span-6 @5xl:col-span-4 @wide:col-start-9 @wide:row-start-3 @ultra:col-span-3 @ultra:col-start-10 @ultra:row-start-1">
+          {/* The server refuses a destination before a wallet exists, which then approves each one. */}
+          {destinations.length === 0 && <p className="text-body-regular text-text-secondary">{settlement.wallet ? "No destinations yet." : "Connect your settlement wallet. It becomes your first destination."}</p>}
           <ul className="flex flex-col divide-y divide-separator-border">
             {destinations.map((item) => {
               const isDefault = item.id === defaultDestinationId;
@@ -310,7 +307,12 @@ export function PayoutsView() {
           className="col-span-12 gap-3 @wide:col-span-8 @wide:col-start-1 @wide:row-span-3 @wide:row-start-2 @ultra:row-span-2"
         >
           {rows.length === 0 ? (
-            <EmptyState icon={RiBankLine} title={payouts.length ? "No payouts match" : "No payouts yet"} description={payouts.length ? "Try a different status." : "Pay out your available balance to see it here."} />
+            <EmptyState
+              icon={RiBankLine}
+              title={payouts.length ? "No payouts match" : "No payouts yet"}
+              description={payouts.length ? "Try a different status." : payments.length ? "Pay out your available balance to see it here." : "Your balance builds here once customers pay. Share a link to take your first payment."}
+              action={!payouts.length && !payments.length && settlement.wallet ? <NavButton href="/dashboard/links/new">Create payment link</NavButton> : undefined}
+            />
           ) : wide ? (
             <Table aria-label="Payout history" size="sm" onRowAction={(key) => setOpenId(String(key))}>
               <TableHeader>
