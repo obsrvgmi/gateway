@@ -310,7 +310,7 @@ export function PayoutsView() {
             <EmptyState
               icon={RiBankLine}
               title={payouts.length ? "No payouts match" : "No payouts yet"}
-              description={payouts.length ? "Try a different status." : payments.length ? "Pay out your available balance to see it here." : "Your balance builds here once customers pay. Share a link to take your first payment."}
+              description={payouts.length ? "Try a different status." : payments.length ? "Pay out your available balance to see it here." : settlement.wallet ? "Your balance builds here once customers pay. Share a link to take your first payment." : "Your balance builds here once customers pay."}
               action={!payouts.length && !payments.length && settlement.wallet ? <NavButton href="/dashboard/links/new">Create payment link</NavButton> : undefined}
             />
           ) : wide ? (

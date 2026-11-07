@@ -120,6 +120,8 @@ test("before a wallet, Manage payouts leads to the payout settings and offers th
   await expect(merchant.getByText("Connect your settlement wallet. It becomes your first destination.")).toBeVisible();
   await expect(merchant.getByRole("button", { name: "Add" })).toBeDisabled();
   await expect(merchant.getByRole("button", { name: "Connect wallet" })).toBeVisible();
+  // A link can't take payments yet, so nothing here may suggest sharing one.
+  await expect(merchant.getByText(/Share a link/)).toHaveCount(0);
 });
 
 test("the merchant connects a settlement wallet by signing", async () => {
