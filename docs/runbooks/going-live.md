@@ -34,13 +34,15 @@ DATABASE_URL=...
 APP_URL=https://your-domain
 SECRET_KEY=$(openssl rand -base64 48)
 TRUST_PROXY=true                 # required for live. Only behind a proxy that appends X-Forwarded-For
-TRUSTED_PROXY_HOPS=1             # how many proxies do. Too high buckets everyone together. Too low trusts forged addresses
+TRUSTED_PROXY_HOPS=1             # how many proxies do. Too low buckets everyone together. Too high trusts forged addresses. Railway is 2
 EMAIL_PROVIDER=resend
 RESEND_API_KEY=...
 EMAIL_FROM="Gateway <no-reply@your-domain>"
 ```
 
 Run the migration, start both processes, and check `/api/health` returns `{"status":"ok","mode":"sim"}`. A `worker_stalled` status means payments aren't being tracked, so don't continue.
+
+Check the proxy hop count on the real host, because the right number depends on it. The steps are in [railway.md](./railway.md), and they work anywhere. If the rate limit keys don't hold your own address, stop and fix it.
 
 Run the live contract test from a machine with network access. It uses the real API and sends no funds:
 

@@ -163,7 +163,7 @@ npm run test:mutation # deletes each money guard and checks a test fails
 
 ## Deploying
 
-`Dockerfile` builds one image that runs as web and worker. See [docs/runbooks/operations.md](./docs/runbooks/operations.md) and [docs/runbooks/going-live.md](./docs/runbooks/going-live.md).
+`Dockerfile` builds one image that runs as web and worker. See [docs/runbooks/operations.md](./docs/runbooks/operations.md), [docs/runbooks/railway.md](./docs/runbooks/railway.md) and [docs/runbooks/going-live.md](./docs/runbooks/going-live.md).
 
 ## Project structure
 

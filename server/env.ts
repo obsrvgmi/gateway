@@ -14,7 +14,7 @@ const schema = z.object({
   SECRET_KEY: z.string().min(32),
   /** The client address is the last X-Forwarded-For hop. Only set this behind a proxy that appends it. */
   TRUST_PROXY: z.stringbool().default(false),
-  /** How many proxies append to X-Forwarded-For in front of the app. A wrong number buckets everyone together, or trusts a forged address. */
+  /** How many proxies append to X-Forwarded-For in front of the app. Too low buckets everyone together. Too high trusts a forged address. */
   TRUSTED_PROXY_HOPS: z.coerce.number().int().min(1).max(5).default(1),
 
   EMAIL_PROVIDER: z.enum(["console", "resend", "file"]).default("console"),
