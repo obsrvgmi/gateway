@@ -166,10 +166,16 @@ test("the payment reaches the dashboard, and the balance is really there", async
 });
 
 test("the webhook arrived, correctly signed", async () => {
-  await expect.poll(() => readFileSync(stackPaths.webhooks, "utf8"), { timeout: 30_000 }).toContain("payment.settled");
-  const events = readFileSync(stackPaths.webhooks, "utf8").trim().split("\n").map((line) => JSON.parse(line) as { signature: string; type: string; body: string });
-  const settled = events.find((event) => event.type === "payment.settled");
-  expect(signaturesMatch(settled!.body, settled!.signature, secret)).toBe(true);
+  // Every browser shares one receiver, so this run's event is the one that verifies with this run's secret.
+  const mine = () =>
+    readFileSync(stackPaths.webhooks, "utf8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { signature: string; type: string; body: string })
+      .find((event) => event.type === "payment.settled" && signaturesMatch(event.body, event.signature, secret));
+  await expect.poll(() => Boolean(mine()), { timeout: 30_000 }).toBe(true);
+  const settled = mine();
   expect(signaturesMatch(settled!.body, settled!.signature, "whsec_wrong")).toBe(false);
   const data = JSON.parse(settled!.body).data as { live: boolean; receive: { amount_base: string } };
   expect(data.live).toBe(false);
