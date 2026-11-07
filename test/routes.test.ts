@@ -483,6 +483,23 @@ describe("the client's address", () => {
   });
 });
 
+describe("a server with broken settings", () => {
+  it("answers 500 and names none of them to the caller", async () => {
+    const saved = process.env.SECRET_KEY;
+    delete process.env.SECRET_KEY;
+    resetEnv();
+    try {
+      const { status, body } = await call(requestLink as Handler, { body: { email: "someone@example.com" } });
+      expect(status).toBe(500);
+      expect(body.error?.code).toBe("internal");
+      expect(JSON.stringify(body)).not.toContain("SECRET_KEY");
+    } finally {
+      process.env.SECRET_KEY = saved;
+      resetEnv();
+    }
+  });
+});
+
 describe("a refused live mode", () => {
   it("stops payments rather than becoming test mode", async () => {
     const { orgId } = await createOrg({ walletAddress: "0x8fd379246834eac74b8419ffda202cf8051f7a03" });

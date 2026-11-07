@@ -49,7 +49,11 @@ let cached: Env | null = null;
 
 /** Parsed on first use, so `next build` needs no secrets. */
 export function env(): Env {
-  if (!cached) cached = schema.parse(process.env);
+  if (cached) return cached;
+  const parsed = schema.safeParse(process.env);
+  // A plain Error, because route handlers answer a ZodError as the caller's own bad input, names and all.
+  if (!parsed.success) throw new Error(`Invalid server settings: ${parsed.error.issues.map((issue) => issue.path.join(".")).join(", ")}`);
+  cached = parsed.data;
   return cached;
 }
 
