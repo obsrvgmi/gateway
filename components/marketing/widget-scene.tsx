@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { RiCheckLine, RiCoinsLine, RiFileCopyLine, RiMailLine, RiPaletteLine, RiPriceTag3Line } from "@remixicon/react";
+import { RiArrowRightLine, RiCoinsLine, RiMailLine, RiPaletteLine, RiPriceTag3Line } from "@remixicon/react";
 import { Radio as AriaRadio, RadioGroup as AriaRadioGroup, ToggleButton } from "react-aria-components";
-import { Button } from "@/components/base/buttons/button";
+import { NavButton } from "@/components/nav-button";
 import { embedSnippet } from "@/lib/embed";
 import { formatToken } from "@/lib/format";
 import type { AssetSymbol, WidgetRadius, WidgetTheme } from "@/lib/types";
 import { cx } from "@/utils/cx";
-import { CoinFace, coinClass, ReceivePicker, Scene, Segmented, useCopy, type SceneFeature } from "./scene";
+import { CoinFace, coinClass, ReceivePicker, Scene, Segmented, type SceneFeature } from "./scene";
 import { ShopWindow, SHOP_ASSETS } from "./shop-window";
 
 const ACCENTS = [
@@ -42,8 +42,8 @@ export function WidgetScene() {
   const [receive, setReceive] = useState<AssetSymbol>("USDC");
   const [received, setReceived] = useState<string | null>(null);
 
-  const code = embedSnippet("https://gateway.example", "wgt_lumen", "html", { theme, accent, radius, receiveAsset: receive, acceptedAssets: accepted });
-  const { copied, copy } = useCopy(code, "Code copied");
+  // The real snippet. It only carries an id, because a widget's settings live in the dashboard.
+  const code = embedSnippet("https://gateway.example", "wgt_lumen", "html");
 
   const toggle = (symbol: AssetSymbol, on: boolean) => setAccepted(SHOP_ASSETS.filter((item) => (item === symbol ? on : accepted.includes(item))));
 
@@ -60,7 +60,7 @@ export function WidgetScene() {
       steps={[
         {
           title: "Make it yours",
-          body: "Try it. The checkout changes as you do.",
+          body: "Try it. The checkout changes as you do, and nothing is charged.",
           children: (
             <div className="tune">
               <span>Colour</span>
@@ -92,7 +92,7 @@ export function WidgetScene() {
           children: (
             <div className="tray">
               <code dir="ltr" className="tray-url">{code.replace(/\s*\n\s*/g, " ")}</code>
-              <Button variant="secondary" leadingIcon={copied ? RiCheckLine : RiFileCopyLine} onClick={copy} className="tray-action">{copied ? "Copied" : "Copy code"}</Button>
+              <NavButton href="/login?new=1" variant="secondary" trailingIcon={RiArrowRightLine} className="tray-action">Make your own</NavButton>
             </div>
           ),
         },

@@ -1,0 +1,17 @@
+{
+  "name": "@gateway/react",
+  "version": "0.1.0",
+  "description": "React component for the Gateway embedded checkout.",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": {
+    "build": "esbuild src/index.tsx --bundle --format=esm --external:react --external:react/jsx-runtime --jsx=automatic --outfile=dist/index.js && tsc -p tsconfig.json"
+  },
+  "peerDependencies": { "react": ">=18" }
+}

@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, type CSSProperties, type ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { RiArrowRightLine, RiCheckLine, type RemixiconComponentType } from "@remixicon/react";
 import { Radio as AriaRadio, RadioGroup as AriaRadioGroup } from "react-aria-components";
-import { toast } from "@/components/base/toast/toast";
 import { TokenMark } from "@/components/brand/token-mark";
 import { NavButton } from "@/components/nav-button";
 import { ASSETS, RECEIVE_ASSETS } from "@/lib/assets";
@@ -138,17 +137,3 @@ export function ReceivePicker({ value, onChange }: { value: AssetSymbol; onChang
   );
 }
 
-export function useCopy(text: string, done: string) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-      toast.success(done);
-    } catch {
-      toast.error("Couldn't copy", { description: "Your browser blocked clipboard access." });
-    }
-  };
-  return { copied, copy };
-}

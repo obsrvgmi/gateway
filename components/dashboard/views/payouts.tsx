@@ -15,17 +15,20 @@ import { Table, TableBody, TableCell, TableColumn, TableHeader, TableRow } from 
 import { toast } from "@/components/base/toast/toast";
 import { TokenMark } from "@/components/brand/token-mark";
 import { NavButton } from "@/components/nav-button";
+import { SettlementCard } from "../settlement-card";
 import { formatToken, formatUsd, shortAddress } from "@/lib/format";
 import { metricsNow } from "@/lib/metrics";
-import { failedPayouts, formatPayoutDate, HOLD_OPTIONS, ledger, nextPayoutAt, nextPayoutEstimate, WALLET_PATTERN } from "@/lib/payouts";
+import { failedPayouts, formatPayoutDate, HOLD_OPTIONS, isWalletAddress, ledger, nextPayoutAt, nextPayoutEstimate, payoutFailureText } from "@/lib/payouts";
+import { api, errorMessage } from "@/lib/api";
 import { actions, newId, useGateway } from "@/lib/store";
-import type { Payout, PayoutSchedule, PayoutStatus } from "@/lib/types";
+import { signChallenge } from "@/lib/sign-intent";
+import { connectWallet } from "@/lib/wallet";
+import type { PayoutSchedule, PayoutStatus } from "@/lib/types";
 import { BalanceBar, PayoutBars } from "../charts";
 import { payoutsCsv, saveCsv } from "../csv";
 import { formatCount, formatDay, formatRowDate, formatStamp, plural } from "../fmt";
 import { PayoutDialog } from "../payout-dialog";
-import { runPayout } from "../payout-sim";
-import { Bento, CopyButton, EmptyState, MAIN_WIDE, PageHeader, Panel, PayoutStatusChip, SimulatedTag, useMainAtLeast, useWideMain } from "../ui";
+import { Bento, CopyButton, EmptyState, MAIN_WIDE, ModeTag, PageHeader, Panel, PayoutStatusChip, useMainAtLeast, useWideMain } from "../ui";
 
 const PAGE_SIZE = 10;
 const SCHEDULES: [PayoutSchedule, string][] = [["daily", "Daily"], ["weekly", "Weekly"], ["manual", "Manual"]];
@@ -39,17 +42,6 @@ function Legend({ swatch, label, value }: { swatch: ReactNode; label: string; va
   );
 }
 
-function retry(payout: Payout, availableInAsset: number) {
-  if (availableInAsset + 1e-9 < payout.amount) {
-    toast.error("Not enough available", { description: `This payout needs ${formatToken(payout.amount, payout.asset)}.` });
-    return false;
-  }
-  actions.updatePayout(payout.id, { status: "processing", failureReason: undefined });
-  runPayout(payout.id);
-  toast("Retrying payout", { id: `payout-${payout.id}`, description: "Simulated. No funds move.", duration: Infinity, dismissible: false });
-  return true;
-}
-
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
@@ -59,7 +51,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function PayoutDrawer({ payoutId, onClose, availableIn }: { payoutId: string | null; onClose: () => void; availableIn: (payout: Payout) => number }) {
+function PayoutDrawer({ payoutId, onClose, onRetry }: { payoutId: string | null; onClose: () => void; onRetry: () => void }) {
   const { payouts } = useGateway();
   const payout = payoutId ? payouts.find((item) => item.id === payoutId) : undefined;
   return (
@@ -69,7 +61,7 @@ function PayoutDrawer({ payoutId, onClose, availableIn }: { payoutId: string | n
           <DrawerHeader title={formatUsd(payout.usd)} description={`${payout.trigger === "scheduled" ? "Scheduled" : "Manual"} payout to ${payout.destinationLabel}`} />
           <DrawerBody>
             <div className="flex flex-col gap-4 pb-4">
-              {payout.failureReason && <p className="rounded-xl bg-status-rose-background p-3 text-body-regular text-status-rose-text">{payout.failureReason}</p>}
+              {payout.failureReason && <p className="rounded-xl bg-status-rose-background p-3 text-body-regular text-status-rose-text">{payoutFailureText(payout)}</p>}
               <dl className="flex flex-col gap-3">
                 <Detail label="Status"><PayoutStatusChip status={payout.status} /></Detail>
                 <Detail label="Left your balance">{formatToken(payout.amount, payout.asset)}</Detail>
@@ -79,14 +71,14 @@ function PayoutDrawer({ payoutId, onClose, availableIn }: { payoutId: string | n
                 <Detail label="Destination"><span dir="ltr" title={payout.destinationAddress}>{shortAddress(payout.destinationAddress)}</span></Detail>
                 <Detail label="Requested">{formatStamp(payout.createdAt)}</Detail>
                 {payout.completedAt && <Detail label="Completed">{formatStamp(payout.completedAt)}</Detail>}
-                <Detail label="Demo reference"><span dir="ltr">{payout.reference}</span></Detail>
+                <Detail label={payout.status === "sent" ? "Transaction" : "Reference"}>{payout.explorerUrl ? <a href={payout.explorerUrl} target="_blank" rel="noreferrer" dir="ltr" className="text-text-accent underline">{shortAddress(payout.reference)}</a> : <span dir="ltr">{shortAddress(payout.reference)}</span>}</Detail>
               </dl>
-              <p className="flex items-center gap-2 text-caption-1-regular text-text-secondary"><SimulatedTag />This record is a mock. It is not a blockchain transaction.</p>
+              {payout.simulated && <p className="flex items-center gap-2 text-caption-1-regular text-text-secondary"><ModeTag />This record isn&apos;t a real transfer.</p>}
             </div>
           </DrawerBody>
           <DrawerFooter>
             <CopyButton text={payout.reference} label="Reference">Copy reference</CopyButton>
-            {payout.status === "failed" && <Button leadingIcon={RiRefreshLine} onClick={() => retry(payout, availableIn(payout))}>Retry payout</Button>}
+            {payout.status === "failed" && !payout.watching && <Button leadingIcon={RiRefreshLine} onClick={onRetry}>Try again</Button>}
           </DrawerFooter>
         </>
       )}
@@ -98,33 +90,52 @@ function DestinationModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
   const [label, setLabel] = useState("");
   const [address, setAddress] = useState("");
   const [invalid, setInvalid] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const { settlement } = useGateway();
   const close = () => { setLabel(""); setAddress(""); setInvalid(false); onClose(); };
-  const add = () => {
-    if (!WALLET_PATTERN.test(address.trim())) {
+  const add = async () => {
+    const target = address.trim();
+    if (!isWalletAddress(target)) {
       setInvalid(true);
       return;
     }
-    actions.addDestination({ id: newId("dst_"), label: label.trim() || "Wallet", address: address.trim() });
-    toast.success("Destination added");
-    close();
+    setBusy(true);
+    try {
+      // The settlement wallet approves each destination, so a stolen session can't add its own.
+      let proof: { message?: string; signature?: string } = {};
+      if (settlement.wallet && target.toLowerCase() !== settlement.wallet) {
+        const { message } = await api<{ message: string }>("/api/wallet/challenge", { body: { action: "destination", address: target } });
+        const account = await connectWallet();
+        if (account !== settlement.wallet) throw new Error(`Switch your wallet to ${settlement.wallet}, your settlement wallet, and try again.`);
+        proof = { message, signature: await signChallenge(account, message, "destination", target) };
+      }
+      const created = await api<{ id: string; label: string; address: string }>("/api/destinations", { body: { id: newId("dst_"), label: label.trim() || "Wallet", address: target, ...proof } });
+      actions.destinationAdded(created);
+      toast.success("Destination added", { description: "Your team has been told." });
+      close();
+    } catch (error) {
+      toast.error("Destination not added", { description: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <Modal isOpen={isOpen} onOpenChange={(open) => !open && close()} size="sm">
-      <ModalHeader title="Add a destination" description="A wallet you control. Nothing is verified in this demo." />
+      <ModalHeader title="Add a destination" description="A wallet you control. Your settlement wallet signs to approve it." />
       <ModalBody className="flex flex-col gap-3 pb-1">
         <Input label="Label" placeholder="Operations" value={label} onChange={setLabel} autoFocus />
-        <Input label="Wallet address" inputDir="ltr" placeholder="name.near or 0x…" value={address} onChange={(value) => { setAddress(value); setInvalid(false); }} isInvalid={invalid} errorMessage="Enter a .near account or a 0x address." />
+        <Input label="Wallet address" inputDir="ltr" placeholder="0x…, name.near, or a Solana, Bitcoin or Tron address" value={address} onChange={(value) => { setAddress(value); setInvalid(false); }} isInvalid={invalid} errorMessage="Enter a wallet address on a chain we support." />
       </ModalBody>
       <ModalFooter>
         <Button variant="secondary" onClick={close}>Cancel</Button>
-        <Button onClick={add}>Add destination</Button>
+        <Button disabled={busy} onClick={() => void add()}>{busy ? "Waiting for wallet" : "Add destination"}</Button>
       </ModalFooter>
     </Modal>
   );
 }
 
 export function PayoutsView() {
-  const { payments, payouts, settings } = useGateway();
+  const { payments, payouts, settings, settlement, prices } = useGateway();
   const wide = useWideMain();
   const roomy = useMainAtLeast(MAIN_WIDE);
   const [paying, setPaying] = useState(false);
@@ -134,10 +145,9 @@ export function PayoutsView() {
   const [page, setPage] = useState(1);
   const { holdDays, schedule, destinations, defaultDestinationId, minimumUsd } = settings.payouts;
   const now = metricsNow(payments);
-  const position = useMemo(() => ledger(payments, payouts, holdDays, now), [payments, payouts, holdDays, now]);
+  const position = useMemo(() => ledger(payments, payouts, holdDays, now, settlement, prices), [payments, payouts, holdDays, now, settlement, prices]);
   const next = nextPayoutAt(schedule, now);
   const failed = failedPayouts(payouts);
-  const availableIn = (payout: Payout) => position.available.find((entry) => entry.asset === payout.asset)?.amount ?? 0;
   const destination = destinations.find((item) => item.id === defaultDestinationId);
 
   const visible = useMemo(() => payouts.filter((payout) => filter === "all" || payout.status === filter), [payouts, filter]);
@@ -158,36 +168,30 @@ export function PayoutsView() {
   const header = (
     <PageHeader
       title="Payouts"
-      meta={<SimulatedTag>Simulated, no funds move</SimulatedTag>}
+      meta={<ModeTag>Test mode, no funds move</ModeTag>}
       description="What's yours, what's on the way, and where it goes."
       actions={<>
-        <Button variant="secondary" leadingIcon={RiDownload2Line} disabled={payouts.length === 0} onClick={() => { saveCsv(payoutsCsv(visible), "payouts-simulated.csv"); toast.success(`Exported ${formatCount(visible.length)} payouts`, { id: "export", description: "payouts-simulated.csv, marked as simulated." }); }}>Export CSV</Button>
+        <Button variant="secondary" leadingIcon={RiDownload2Line} disabled={payouts.length === 0} onClick={() => { saveCsv(payoutsCsv(visible), "payouts.csv"); toast.success(`Exported ${formatCount(visible.length)} payouts`, { id: "export", description: "payouts.csv is in your downloads." }); }}>Export CSV</Button>
       </>}
     />
   );
 
-  if (payments.length === 0 && payouts.length === 0) {
-    return (
-      <>
-        {header}
-        <Panel><EmptyState icon={RiBankLine} title="Nothing to pay out yet" description="Your balance builds here once customers pay. Share a link to take your first payment." action={<NavButton href="/dashboard/links/new">Create payment link</NavButton>} /></Panel>
-      </>
-    );
-  }
-
+  // No early empty state: Settings sends people here to manage payouts, so the controls must show from day one.
   return (
     <>
       {header}
+
+      {!settlement.wallet && <SettlementCard />}
 
       {failed.slice(0, 2).map((payout) => (
         <div key={payout.id} role="alert" className="dash-plate flex flex-wrap items-center gap-3 rounded-2xl p-3">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-status-rose-background text-status-rose-text"><RiErrorWarningLine className="size-5" aria-hidden /></span>
           <div className="flex min-w-[200px] flex-1 flex-col">
             <p className="text-body-medium">{formatToken(payout.amount, payout.asset)} to {payout.destinationLabel} failed on {formatRowDate(payout.createdAt)}</p>
-            <p className="text-caption-1-regular text-text-secondary">{payout.failureReason}</p>
+            <p className="text-caption-1-regular text-text-secondary">{payoutFailureText(payout)}</p>
           </div>
           <Button variant="ghost" size="small" onClick={() => setOpenId(payout.id)}>Details</Button>
-          <Button variant="secondary" size="small" leadingIcon={RiRefreshLine} onClick={() => retry(payout, availableIn(payout))}>Retry</Button>
+          {!payout.watching && <Button variant="secondary" size="small" leadingIcon={RiRefreshLine} onClick={() => setPaying(true)}>Try again</Button>}
         </div>
       ))}
 
@@ -197,7 +201,7 @@ export function PayoutsView() {
             <div className="flex min-w-0 flex-col gap-0.5">
               <h2 className="text-body-regular text-text-secondary">Available to pay out</h2>
               <p className="text-display-3-semibold tracking-[-0.02em] tabular-nums [overflow-wrap:anywhere]">{formatUsd(position.availableUsd)}</p>
-              <p className="text-caption-1-regular text-text-secondary">In your settlement account. Gateway never holds it.</p>
+              <p className="text-caption-1-regular text-text-secondary">{settlement.wallet ? (settlement.balancesFresh ? "In your settlement account, controlled by your wallet. Gateway never holds it." : "We couldn't read your balance just now. It's safe, and this updates on its own.") : "Connect your settlement wallet to take payments."}</p>
             </div>
             <Button leadingIcon={RiBankLine} disabled={position.availableUsd <= 0} onClick={() => setPaying(true)}>Pay out now</Button>
           </div>
@@ -227,14 +231,14 @@ export function PayoutsView() {
           )}
         </section>
 
-        <Panel title={next ? `Next payout, ${formatPayoutDate(next)}` : "Automatic payouts are off"} description={next ? `About ${formatUsd(nextPayoutEstimate(position, next))}, including what clears the hold by then` : "Nothing leaves until you pay out."} className="col-span-12 @5xl:col-span-5 @ultra:col-span-4">
+        <Panel title={next ? `Next reminder, ${formatPayoutDate(next)}` : "You choose when to pay out"} description={next ? `About ${formatUsd(nextPayoutEstimate(position, next))} by then. We'll remind you, and your wallet signs it. Gateway can't send funds on its own.` : "Nothing leaves until you sign it."} className="col-span-12 @5xl:col-span-5 @ultra:col-span-4">
           <div className="grid grid-cols-1 gap-4 @xl:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label>Schedule</Label>
               <SegmentedControl aria-label="Payout schedule" selectedKeys={[schedule]} onSelectionChange={(keys) => { const value = [...keys][0]; if (value) { actions.updatePayoutSettings({ schedule: value as PayoutSchedule }); toast.success("Schedule updated", { id: "payout-settings" }); } }} className="self-start">
                 {SCHEDULES.map(([id, label]) => <SegmentedControlItem key={id} id={id}>{label}</SegmentedControlItem>)}
               </SegmentedControl>
-              <p className="text-caption-1-regular text-text-secondary">{schedule === "manual" ? "You choose when." : schedule === "weekly" ? "Mondays at 09:00 UTC." : "Every day at 09:00 UTC."}</p>
+              <p className="text-caption-1-regular text-text-secondary">{schedule === "manual" ? "No reminders." : schedule === "weekly" ? "A reminder on Mondays at 09:00 UTC." : "A reminder every day at 09:00 UTC."}</p>
             </div>
             <Select label="Refund window" selectedKey={String(holdDays)} onSelectionChange={(key) => { actions.updatePayoutSettings({ holdDays: Number(key) }); toast.success("Refund window updated", { id: "payout-settings" }); }} className="w-full" triggerClassName="w-full">
               {HOLD_OPTIONS.map((days) => <SelectItem key={days} id={String(days)} textValue={days ? plural(days, "day") : "None"}>{days ? plural(days, "day") : "None"}</SelectItem>)}
@@ -244,13 +248,13 @@ export function PayoutsView() {
             <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background-primary-default"><RiWalletLine className="size-4.5 text-foreground-icon-secondary" aria-hidden /></span>
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-body-medium">{destination?.label ?? "No destination"}</span>
-              <span dir="ltr" className="truncate text-start text-caption-1-regular text-text-secondary">{destination ? shortAddress(destination.address) : "Add one below"}</span>
+              <span dir="ltr" className="truncate text-start text-caption-1-regular text-text-secondary">{destination ? shortAddress(destination.address) : settlement.wallet ? "Add one below" : "Connect your wallet first"}</span>
             </span>
             <span className="shrink-0 text-caption-1-regular text-text-secondary tabular-nums">Min {formatUsd(minimumUsd).replace(".00", "")}</span>
           </div>
         </Panel>
 
-        <Panel id="hold" title="On hold" description={holdDays ? `Your ${holdDays}-day refund window keeps new payments here, so you can refund before funds leave.` : "No refund window: payments are available as soon as they settle."} className="col-span-12 scroll-mt-20 @2xl:col-span-6 @5xl:col-span-4 @wide:col-start-9 @wide:row-start-2" >
+        <Panel id="hold" title="On hold" description={holdDays ? `Your ${holdDays}-day refund window keeps new payments out of payouts here, so you can refund first. Your wallet can still move them directly.` : "No refund window: payments are available as soon as they settle."} className="col-span-12 scroll-mt-20 @2xl:col-span-6 @5xl:col-span-4 @wide:col-start-9 @wide:row-start-2" >
           
           {position.releases.length ? (
             <ul className="flex flex-col divide-y divide-separator-border">
@@ -266,7 +270,9 @@ export function PayoutsView() {
           ) : <p className="text-body-regular text-text-secondary">Nothing is on hold right now.</p>}
         </Panel>
 
-        <Panel title="Where it goes" actions={<Button variant="secondary" size="small" leadingIcon={RiAddLine} onClick={() => setAdding(true)}>Add</Button>} className="col-span-12 @2xl:col-span-6 @5xl:col-span-4 @wide:col-start-9 @wide:row-start-3 @ultra:col-span-3 @ultra:col-start-10 @ultra:row-start-1">
+        <Panel title="Where it goes" actions={<Button variant="secondary" size="small" leadingIcon={RiAddLine} disabled={!settlement.wallet} onClick={() => setAdding(true)}>Add</Button>} className="col-span-12 @2xl:col-span-6 @5xl:col-span-4 @wide:col-start-9 @wide:row-start-3 @ultra:col-span-3 @ultra:col-start-10 @ultra:row-start-1">
+          {/* The server refuses a destination before a wallet exists, which then approves each one. */}
+          {destinations.length === 0 && <p className="text-body-regular text-text-secondary">{settlement.wallet ? "No destinations yet." : "Connect your settlement wallet. It becomes your first destination."}</p>}
           <ul className="flex flex-col divide-y divide-separator-border">
             {destinations.map((item) => {
               const isDefault = item.id === defaultDestinationId;
@@ -277,7 +283,7 @@ export function PayoutsView() {
                     <span dir="ltr" title={item.address} className="truncate text-start text-caption-1-regular text-text-secondary">{shortAddress(item.address)}</span>
                   </span>
                   {!isDefault && <Button variant="ghost" size="small" onClick={() => { actions.setDefaultDestination(item.id); toast.success(`${item.label} is now the default`); }}>Make default</Button>}
-                  {!isDefault && <Button variant="ghost" size="small" iconOnly leadingIcon={RiDeleteBin6Line} aria-label={`Remove ${item.label}`} onClick={() => { actions.removeDestination(item.id); toast.success("Destination removed", { actions: [{ label: "Undo", onClick: () => actions.addDestination(item) }] }); }} />}
+                  {!isDefault && <Button variant="ghost" size="small" iconOnly leadingIcon={RiDeleteBin6Line} aria-label={`Remove ${item.label}`} onClick={() => { actions.removeDestination(item.id); toast.success("Destination removed"); }} />}
                 </li>
               );
             })}
@@ -301,7 +307,12 @@ export function PayoutsView() {
           className="col-span-12 gap-3 @wide:col-span-8 @wide:col-start-1 @wide:row-span-3 @wide:row-start-2 @ultra:row-span-2"
         >
           {rows.length === 0 ? (
-            <EmptyState icon={RiBankLine} title={payouts.length ? "No payouts match" : "No payouts yet"} description={payouts.length ? "Try a different status." : "Pay out your available balance to see it here."} />
+            <EmptyState
+              icon={RiBankLine}
+              title={payouts.length ? "No payouts match" : "No payouts yet"}
+              description={payouts.length ? "Try a different status." : payments.length ? "Pay out your available balance to see it here." : settlement.wallet ? "Your balance builds here once customers pay. Share a link to take your first payment." : "Your balance builds here once customers pay."}
+              action={!payouts.length && !payments.length && settlement.wallet ? <NavButton href="/dashboard/links/new">Create payment link</NavButton> : undefined}
+            />
           ) : wide ? (
             <Table aria-label="Payout history" size="sm" onRowAction={(key) => setOpenId(String(key))}>
               <TableHeader>
@@ -354,7 +365,7 @@ export function PayoutsView() {
 
       <PayoutDialog isOpen={paying} onOpenChange={setPaying} />
       <DestinationModal isOpen={adding} onClose={() => setAdding(false)} />
-      <PayoutDrawer payoutId={openId} onClose={() => setOpenId(null)} availableIn={availableIn} />
+      <PayoutDrawer payoutId={openId} onClose={() => setOpenId(null)} onRetry={() => { setOpenId(null); setPaying(true); }} />
     </>
   );
 }

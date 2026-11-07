@@ -101,9 +101,9 @@ export function SiteNav() {
           <div className="site-actions">
             <div className="site-recede">
               <ThemeToggle appearance="segmented" size="small" />
-              <NavButton href="/dashboard" variant="ghost" className="site-login">Login</NavButton>
+              <NavButton href="/login" variant="ghost" className="site-login">Login</NavButton>
             </div>
-            <NavButton href="/dashboard" className="site-start">Get Started</NavButton>
+            <NavButton href="/login?new=1" className="site-start">Get Started</NavButton>
             <AriaButton aria-label="Open menu" aria-expanded={menuOpen} onPress={() => setMenuOpen(true)} className="site-burger">
               <span aria-hidden /><span aria-hidden />
             </AriaButton>
@@ -140,8 +140,8 @@ export function SiteNav() {
                 <ThemeToggle appearance="segmented" size="small" />
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <NavButton href="/dashboard" variant="secondary" className="sheet-cta" onClick={() => setMenuOpen(false)}>Login</NavButton>
-                <NavButton href="/dashboard" className="sheet-cta" onClick={() => setMenuOpen(false)}>Get Started</NavButton>
+                <NavButton href="/login" variant="secondary" className="sheet-cta" onClick={() => setMenuOpen(false)}>Login</NavButton>
+                <NavButton href="/login?new=1" className="sheet-cta" onClick={() => setMenuOpen(false)}>Get Started</NavButton>
               </div>
             </div>
           </Dialog>

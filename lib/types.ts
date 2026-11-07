@@ -1,6 +1,6 @@
 export type AssetSymbol = "ETH" | "BTC" | "SOL" | "NEAR" | "USDT" | "USDC" | "BNB" | "ARB";
 export type LinkStatus = "active" | "paused" | "expired";
-export type PaymentStatus = "settled" | "processing" | "refunded" | "expired";
+export type PaymentStatus = "settled" | "processing" | "refunded" | "expired" | "failed";
 export type WidgetStatus = "live" | "paused";
 export type WidgetTheme = "light" | "dark" | "auto";
 export type WidgetRadius = "rounded" | "soft" | "sharp";
@@ -65,16 +65,43 @@ export interface Payment {
   payer: string;
   settleSeconds: number | null;
   createdAt: string;
-  /** Set when the merchant marks a settled payment as refunded. */
+  /** Set when a refund to the customer has completed. */
   refundedAt?: string;
-  /** Created by the dashboard's live simulator, not by a checkout. */
+  /** Test mode or sample data: no real funds moved. */
   simulated?: boolean;
+  /** What the customer paid above the merchant's amount, from the provider's quote. */
+  feeUsd?: number;
+  /** Lifecycle detail for the drawer; absent on sample data. */
+  detail?: PaymentDetail;
 }
 
-export type PayoutStatus = "processing" | "sent" | "failed";
+export interface TxRef {
+  hash: string;
+  explorerUrl: string;
+}
+
+export interface PaymentDetail {
+  state: string;
+  /** Went straight to the merchant's wallet, with no balance step. */
+  direct: boolean;
+  depositAddress: string | null;
+  depositedAt: string | null;
+  settledAt: string | null;
+  originTxs: TxRef[];
+  destinationTxs: TxRef[];
+  failureReason: string | null;
+  /** The provider returned the customer's deposit, for example after an underpayment. */
+  returnedToCustomer: boolean;
+  customerEmail: string | null;
+  /** An open refund, if any. */
+  refundState: string | null;
+  refundedUsd: number;
+}
+
+export type PayoutStatus = "awaiting_signature" | "processing" | "sent" | "failed" | "expired";
 export type PayoutTrigger = "scheduled" | "manual";
 
-/** A simulated sweep from the merchant's settlement account to a destination. No funds ever move. */
+/** A sweep from the merchant's settlement account to a destination, signed by the merchant's wallet. */
 export interface Payout {
   id: string;
   /** What leaves the settlement account. */
@@ -94,11 +121,16 @@ export interface Payout {
   status: PayoutStatus;
   trigger: PayoutTrigger;
   paymentCount: number;
-  /** Stands in for a transaction hash. Prefixed `sim_` so it can't be mistaken for one. */
+  /** The destination transaction hash once sent, or `sim_…` in test mode. */
   reference: string;
+  /** Test mode or sample data: no real funds moved. */
+  simulated?: boolean;
+  explorerUrl?: string;
   createdAt: string;
   completedAt: string | null;
   failureReason?: string;
+  /** It failed but could still go through, so its funds stay reserved and retrying could pay twice. */
+  watching?: boolean;
 }
 
 export interface PayoutDestination {
@@ -126,7 +158,7 @@ export interface ApiKey {
   createdAt: string;
 }
 
-export type WebhookEvent = "payment.processing" | "payment.settled" | "payment.refunded" | "payment.expired" | "link.created";
+export type WebhookEvent = "payment.processing" | "payment.settled" | "payment.refunded" | "payment.expired" | "payment.failed" | "payment.underpaid" | "payout.sent" | "payout.failed" | "link.created";
 
 export interface Webhook {
   id: string;
@@ -161,9 +193,32 @@ export interface NotificationPrefs {
   links: boolean;
 }
 
+export type SettlementMode = "balance" | "direct";
+
+export interface AssetAmount {
+  asset: AssetSymbol;
+  /** Exact, in the asset's smallest unit. Numbers are for display only. */
+  base: string;
+  amount: number;
+  usd: number;
+}
+
+export interface Settlement {
+  mode: SettlementMode;
+  /** The merchant's own wallet. Only this key can move a settlement balance. */
+  wallet: string | null;
+  /** The merchant's settlement account as read from chain, when `balance` mode has a wallet. */
+  balances: AssetAmount[];
+  /** Balance less funds on hold and in flight. What a payout can send now. */
+  available: AssetAmount[];
+  /** False when the balance read failed; show the last figures as stale, never as zero. */
+  balancesFresh: boolean;
+}
+
 export interface Settings {
   businessName: string;
   receiveAsset: AssetSymbol;
+  /** The default destination's address, kept for everything that shows where payouts go. */
   walletAddress: string;
   apiKeys: ApiKey[];
   webhooks: Webhook[];
@@ -173,6 +228,15 @@ export interface Settings {
   payouts: PayoutSettings;
 }
 
+export interface Me {
+  id: string;
+  email: string;
+  name: string;
+  role: TeamRole;
+}
+
+export type PaymentsMode = "sim" | "live";
+
 export interface GatewayState {
   links: PaymentLink[];
   widgets: Widget[];
@@ -180,4 +244,23 @@ export interface GatewayState {
   payouts: Payout[];
   settings: Settings;
   setupDismissed: boolean;
+  /** Who is signed in. Null before the first load. */
+  me: Me | null;
+  mode: PaymentsMode;
+  settlement: Settlement;
+  /** The provider's current USD prices, for display. */
+  prices: Partial<Record<AssetSymbol, number>>;
+  /** True when older payments were left out of `payments`. */
+  paymentsTruncated: boolean;
+  notifications: AppNotification[];
+}
+
+export interface AppNotification {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  href: string;
+  createdAt: string;
+  read: boolean;
 }

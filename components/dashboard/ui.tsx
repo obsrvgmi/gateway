@@ -1,5 +1,6 @@
 "use client";
 
+import { useGateway } from "@/lib/store";
 import Link from "next/link";
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { RiArrowDownLine, RiArrowRightSLine, RiArrowUpLine, RiCheckLine, RiFileCopyLine, RiSubtractLine } from "@remixicon/react";
@@ -79,6 +80,12 @@ export function SimulatedTag({ className, children = "Simulated" }: { className?
       {children}
     </span>
   );
+}
+
+/** Shown wherever money appears while the workspace runs in test mode. Nothing in live mode. */
+export function ModeTag({ className, children = "Test mode" }: { className?: string; children?: ReactNode }) {
+  const { mode } = useGateway();
+  return mode === "live" ? null : <SimulatedTag className={className}>{children}</SimulatedTag>;
 }
 
 /** Same numbers as the @wide and @ultra container variants in globals.css. */
@@ -166,6 +173,7 @@ const PAYMENT_STATUS: Record<PaymentStatus, { label: string; color: ChipColor }>
   processing: { label: "Processing", color: "yellow" },
   refunded: { label: "Refunded", color: "cyan" },
   expired: { label: "Expired", color: "neutral" },
+  failed: { label: "Failed", color: "rose" },
 };
 const LINK_STATUS: Record<LinkStatus, { label: string; color: ChipColor }> = {
   active: { label: "Active", color: "lime" },
@@ -179,8 +187,10 @@ const WIDGET_STATUS: Record<WidgetStatus, { label: string; color: ChipColor }> =
 
 const PAYOUT_STATUS: Record<PayoutStatus, { label: string; color: ChipColor }> = {
   sent: { label: "Sent", color: "lime" },
+  awaiting_signature: { label: "Needs signature", color: "yellow" },
   processing: { label: "Sending", color: "yellow" },
   failed: { label: "Failed", color: "rose" },
+  expired: { label: "Expired", color: "neutral" },
 };
 
 export const PayoutStatusChip = ({ status }: { status: PayoutStatus }) => <Chip color={PAYOUT_STATUS[status].color}>{PAYOUT_STATUS[status].label}</Chip>;
@@ -189,8 +199,6 @@ export const PaymentStatusChip = ({ status }: { status: PaymentStatus }) => <Chi
 export const LinkStatusChip = ({ status }: { status: LinkStatus }) => <Chip color={LINK_STATUS[status].color}>{LINK_STATUS[status].label}</Chip>;
 export const WidgetStatusChip = ({ status }: { status: WidgetStatus }) => <Chip color={WIDGET_STATUS[status].color}>{WIDGET_STATUS[status].label}</Chip>;
 
-/** The note on every toast that could read as money moving. */
-export const SIMULATED = "Simulated. No funds moved.";
 
 export async function copyText(text: string, label: string) {
   try {

@@ -18,6 +18,7 @@ import { formatDate, formatUsd } from "@/lib/format";
 import { actions, newId, useGateway } from "@/lib/store";
 import type { AssetSymbol, PaymentLink } from "@/lib/types";
 import { useOrigin } from "@/lib/use-origin";
+import { cx } from "@/utils/cx";
 import { AssetSelect } from "../asset-select";
 import { CopyButton, EmptyState, PageHeader, Panel, SimulatedTag } from "../ui";
 import { useUnsavedGuard } from "../unsaved";
@@ -65,6 +66,10 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
   const [successUrl, setSuccessUrl] = useState(existing?.successUrl ?? "");
   const [submitted, setSubmitted] = useState(false);
   const [created, setCreated] = useState<PaymentLink | null>(null);
+  // Two steps when creating. Editing shows everything at once, because someone came to change one thing.
+  const [step, setStep] = useState<1 | 2>(1);
+  const showDetails = Boolean(existing) || step === 1;
+  const showOptions = Boolean(existing) || step === 2;
   const expiryValue = expiry?.toString() ?? null;
   const [baseline] = useState(() => JSON.stringify([title, description, fixed, amount, receiveAsset, expiryValue, successUrl]));
   const dirty = !created && JSON.stringify([title, description, fixed, amount, receiveAsset, expiryValue, successUrl]) !== baseline;
@@ -82,6 +87,14 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
     setSuccessUrl("");
     setSubmitted(false);
     setCreated(null);
+    setStep(1);
+  };
+
+  const next = () => {
+    setSubmitted(true);
+    if (title.trim() === "" || (fixed && !(amount > 0))) return;
+    setSubmitted(false);
+    setStep(2);
   };
 
   const submit = (event: FormEvent) => {
@@ -120,7 +133,18 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
       <PageHeader title={existing ? `Edit ${existing.title}` : "New payment link"} description={existing ? "The URL stays the same. Changes apply to the next checkout." : "Set what you're charging and which asset you want to receive."} />
       <div className="grid grid-cols-12 items-start gap-3 @3xl:gap-4 @wide:grid-cols-[minmax(0,46rem)_minmax(0,1fr)]">
         <Panel className="col-span-12 @4xl:col-span-7 @wide:col-span-1">
-          <form onSubmit={submit} noValidate className="flex flex-col gap-5">
+          <form onSubmit={step === 1 && !existing ? (event) => { event.preventDefault(); next(); } : submit} noValidate className="flex flex-col gap-5">
+            {!existing && (
+              <ol className="flex items-center gap-2 text-caption-1-medium" aria-label="Steps">
+                {["What you're charging", "How you're paid"].map((label, index) => (
+                  <li key={label} aria-current={step === index + 1 ? "step" : undefined} className={cx("flex items-center gap-1.5", step === index + 1 ? "text-text-primary" : "text-text-tertiary")}>
+                    <span className={cx("flex size-5 items-center justify-center rounded-full tabular-nums", step === index + 1 ? "bg-accent-500 text-text-on-accent" : "bg-background-secondary-default")}>{index + 1}</span>
+                    {label}
+                  </li>
+                ))}
+              </ol>
+            )}
+            {showDetails && <>
             <Input label="Title" placeholder="Brand sprint deposit" value={title} onChange={setTitle} isRequired isInvalid={titleInvalid} errorMessage="Give the link a title." hint="Customers see this at checkout." />
             <Textarea label="Description" placeholder="What is this payment for?" value={description} onChange={setDescription} rows={2} />
 
@@ -143,6 +167,9 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
               )}
             </div>
 
+            </>}
+
+            {showOptions && <>
             <AssetSelect label="Receive as" value={receiveAsset} onChange={setReceiveAsset} />
 
             <div className="grid gap-5 sm:grid-cols-2">
@@ -154,15 +181,17 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
               <Input label="Success URL (optional)" placeholder="https://yoursite.com/thanks" type="url" value={successUrl} onChange={setSuccessUrl} isInvalid={urlInvalid} errorMessage="Enter a full https:// URL." />
             </div>
 
+            </>}
+
             <div className="flex justify-end gap-2">
-              <NavButton href="/dashboard/links" variant="secondary">Cancel</NavButton>
-              {existing ? <Button type="submit" leadingIcon={RiSaveLine}>Save changes</Button> : <Button type="submit" leadingIcon={RiAddLine}>Create link</Button>}
+              {step === 2 && !existing ? <Button variant="secondary" onClick={() => setStep(1)}>Back</Button> : <NavButton href="/dashboard/links" variant="secondary">Cancel</NavButton>}
+              {existing ? <Button type="submit" leadingIcon={RiSaveLine}>Save changes</Button> : step === 1 ? <Button type="submit">Next</Button> : <Button type="submit" leadingIcon={RiAddLine}>Create link</Button>}
             </div>
           </form>
         </Panel>
 
         <div className="dash-plate dash-canvas col-span-12 flex min-w-0 flex-col items-center gap-3 rounded-3xl p-4 @4xl:sticky @4xl:top-[4.5rem] @4xl:col-span-5 @wide:col-span-1 @wide:min-h-[calc(100dvh-11.5rem)] @wide:justify-center">
-          <SimulatedTag className="bg-background-inner-default">Preview, this is what customers see</SimulatedTag>
+          <SimulatedTag className="bg-background-inner-default">Preview, illustrative prices</SimulatedTag>
           <CheckoutWidget
             merchant={settings.businessName}
             title={title || "Your link title"}

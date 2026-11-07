@@ -38,7 +38,7 @@ function luminance(color: string) {
  * Tokens derived from the accent resolve at :root, so a local accent must restate them too.
  * Merchants can pick any colour, so text on it flips by contrast.
  */
-function accentStyle(accent: string): CSSProperties {
+export function accentStyle(accent: string): CSSProperties {
   const shade = (mix: string, percent: number) => `color-mix(in srgb, ${accent} ${percent}%, ${mix})`;
   const [c300, c400, c600, c700] = [shade("white", 72), shade("white", 86), shade("black", 88), shade("black", 76)];
   const light = luminance(accent);

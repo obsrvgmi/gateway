@@ -1,6 +1,12 @@
 import { quote } from "./assets";
+import { WIDGET_DEFAULTS } from "./defaults";
 import { payoutFee } from "./payouts";
-import type { AssetSymbol, GatewayState, Payment, PaymentLink, PaymentStatus, Payout, Widget, WidgetSuccess } from "./types";
+import type { AssetSymbol, Payment, PaymentLink, PaymentStatus, Payout, Widget } from "./types";
+
+/**
+ * Sample data for Test mode's "Load sample data" button, on the server only. Never reaches the client
+ * bundle, and never runs in live mode.
+ */
 
 /** Every mock date and metric window is measured from this instant. */
 export const DEMO_NOW = Date.UTC(2026, 10, 5, 18, 0, 0);
@@ -36,9 +42,6 @@ const LINK_TRAITS: Record<string, { weight: number; closedDaysAgo?: number }> = 
   lnk_k2p7wq: { weight: 0.025 },
 };
 
-const RECEIPT: WidgetSuccess = { mode: "receipt", message: "", url: "" };
-/** What the builder starts from, and what the seeded widgets don't override. */
-export const WIDGET_DEFAULTS = { acceptedAssets: ["ETH", "BTC", "SOL", "NEAR", "USDT", "USDC", "BNB", "ARB"] as AssetSymbol[], presets: [] as number[], displayName: "", logo: "", collectEmail: false, success: RECEIPT };
 
 const WIDGETS: Widget[] = [
   { id: "wgt_shop01", name: "Storefront checkout", site: "shop.lumen.studio", status: "live", theme: "light", accent: "#00EC97", radius: "rounded", amount: null, receiveAsset: "USDC", buttonLabel: "Pay now", showBranding: true, ...WIDGET_DEFAULTS, presets: [29, 79, 240], collectEmail: true, createdAt: daysAgo(726) },
@@ -163,7 +166,6 @@ function generatePayments(): Payment[] {
 
 const SEED_HOLD_DAYS = 3;
 const TREASURY = { id: "dst_treasury", label: "Treasury", address: "lumen-studio.near" };
-const OPERATIONS = { id: "dst_ops", label: "Operations", address: "0x7f3e91c05ab84d26e1f09c7d3ab2e486c10d5e3a" };
 
 /**
  * Derived from the payments above, so the RNG sequence is untouched and every chart stays as it was.
@@ -220,33 +222,4 @@ function generatePayouts(payments: Payment[]): Payout[] {
 
 const SEED_PAYMENTS = generatePayments();
 
-export const SEED_STATE: GatewayState = {
-  links: LINKS,
-  widgets: WIDGETS,
-  payments: SEED_PAYMENTS,
-  payouts: generatePayouts(SEED_PAYMENTS),
-  settings: {
-    businessName: "Lumen Studio",
-    receiveAsset: "USDC",
-    walletAddress: "lumen-studio.near",
-    apiKeys: [
-      { id: "key_1", label: "Production server", prefix: "gw_test_4f9a", createdAt: daysAgo(180) },
-      { id: "key_2", label: "Staging", prefix: "gw_test_b21c", createdAt: daysAgo(42) },
-    ],
-    webhooks: [
-      { id: "whk_1", url: "https://api.lumen.studio/hooks/gateway", events: ["payment.settled", "payment.refunded"], enabled: true, createdAt: daysAgo(170) },
-      { id: "whk_2", url: "https://staging.lumen.studio/hooks/gateway", events: ["payment.processing", "payment.settled", "payment.refunded", "payment.expired"], enabled: false, createdAt: daysAgo(40) },
-    ],
-    team: [
-      { id: "mem_1", name: "Studio owner", email: "owner@lumen.studio", role: "owner", status: "active", createdAt: daysAgo(728) },
-      { id: "mem_2", name: "Finance lead", email: "finance@lumen.studio", role: "finance", status: "active", createdAt: daysAgo(400) },
-      { id: "mem_3", name: "Support desk", email: "support@lumen.studio", role: "viewer", status: "invited", createdAt: daysAgo(3) },
-    ],
-    branding: { accent: "#00EC97", supportEmail: "support@lumen.studio", statementName: "LUMEN STUDIO" },
-    notifications: { settled: true, processing: true, refunded: true, expired: true, links: true },
-    payouts: { schedule: "weekly", holdDays: SEED_HOLD_DAYS, minimumUsd: 100, destinations: [TREASURY, OPERATIONS], defaultDestinationId: TREASURY.id },
-  },
-  setupDismissed: false,
-};
-
-export const EMPTY_STATE: GatewayState = { ...SEED_STATE, links: [], widgets: [], payments: [], payouts: [], setupDismissed: false };
+export const SAMPLE = { links: LINKS, widgets: WIDGETS, payments: SEED_PAYMENTS, payouts: generatePayouts(SEED_PAYMENTS) };

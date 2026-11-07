@@ -11,9 +11,10 @@ const LINKS = [
   { href: "#links", label: "Payment Links" },
   { href: "#widgets", label: "Widgets" },
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/pay/lnk_8fk2m1", label: "Try a payment" },
+  { href: "/docs", label: "Developers" },
+  { href: "/status", label: "Status" },
 ];
-const MICROPRINT = "SPECIMEN  NO FUNDS MOVE  ".repeat(14);
+const MICROPRINT = "NON-CUSTODIAL  ANY ASSET IN  ONE ASSET OUT  ".repeat(16);
 
 /**
  * The reverse of the note: the same ink in both themes, so the page always ends on the same frame.
@@ -34,7 +35,7 @@ export function SiteFooter() {
           <h2 className="foot-title">They pay their way.<br /> You get paid yours.</h2>
           <div className="foot-actions">
             <NavButton href="/dashboard/links/new" trailingIcon={RiArrowRightLine} className="stage-cta">Create Payment Link</NavButton>
-            <NavButton href="/pay/lnk_8fk2m1" variant="secondary" className="stage-cta">Try a payment</NavButton>
+            <NavButton href="/docs" variant="secondary" className="stage-cta">Read the docs</NavButton>
           </div>
         </div>
 
@@ -50,7 +51,7 @@ export function SiteFooter() {
 
         <p aria-hidden className="foot-micro">{MICROPRINT}</p>
         <div className="foot-legal">
-          <p>{SITE.name} is a working name and a working demo. Payments here are simulated and no funds move.</p>
+          <p>{SITE.name} is non-custodial software. Your wallet holds your funds. Payments route through NEAR Intents. <a href="/terms" className="underline">Terms</a> and <a href="/privacy" className="underline">Privacy</a>. The demos on this page use illustrative prices and move no funds.</p>
           <p className="foot-powered"><span aria-hidden className="stage-powered-dot" />Powered by NEAR Intents</p>
         </div>
       </div>

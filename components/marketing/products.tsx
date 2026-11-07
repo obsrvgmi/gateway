@@ -2,19 +2,17 @@
 
 import { useRef, useState, type PointerEvent } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { RiCheckLine, RiExternalLinkLine, RiFileCopyLine, RiMailLine, RiMoneyDollarCircleLine, RiQrCodeLine, RiTimerLine } from "@remixicon/react";
-import { Button, ButtonLink } from "@/components/base/buttons/button";
+import { RiArrowRightLine, RiExternalLinkLine, RiMoneyDollarCircleLine, RiQrCodeLine, RiTimerLine } from "@remixicon/react";
 import { TokenMark } from "@/components/brand/token-mark";
 import { ASSETS, quote } from "@/lib/assets";
 import { formatToken, formatUsd } from "@/lib/format";
 import { SITE } from "@/lib/site";
-import { useOrigin } from "@/lib/use-origin";
 import type { AssetSymbol } from "@/lib/types";
+import { NavButton } from "@/components/nav-button";
 import { Bus } from "./bus";
-import { ReceivePicker, Scene, Segmented, useCopy, type SceneFeature } from "./scene";
+import { ReceivePicker, Scene, Segmented, type SceneFeature } from "./scene";
 import { WidgetScene } from "./widget-scene";
 
-const DEMO_LINK = "/pay/lnk_8fk2m1";
 const SERIAL = "lnk_8fk2m1";
 // What the mock shows and the QR encodes. `.example` is reserved, so it can never resolve to someone.
 const DISPLAY_LINK = `pay.gateway.example/${SERIAL}`;
@@ -46,12 +44,9 @@ export function Products() {
 }
 
 function LinkScene() {
-  const origin = useOrigin();
-  const url = `${origin}${DEMO_LINK}`;
   const [amount, setAmount] = useState(2400);
   const [purpose, setPurpose] = useState(PURPOSES[0]);
   const [receive, setReceive] = useState<AssetSymbol>("USDC");
-  const { copied, copy } = useCopy(url, "Link copied");
 
   return (
     <Scene
@@ -89,9 +84,8 @@ function LinkScene() {
           body: "Send it in a chat or email, or show the QR code.",
           children: (
             <div className="tray">
-              <a dir="ltr" href={DEMO_LINK} className="tray-url">{DISPLAY_LINK}</a>
-              <Button variant="secondary" leadingIcon={copied ? RiCheckLine : RiFileCopyLine} onClick={copy} className="tray-action">{copied ? "Copied" : "Copy link"}</Button>
-              <ButtonLink variant="secondary" leadingIcon={RiMailLine} href={`mailto:?subject=${encodeURIComponent("Payment link")}&body=${encodeURIComponent(url)}`} className="tray-action">Email</ButtonLink>
+              <span dir="ltr" className="tray-url">{DISPLAY_LINK}</span>
+              <NavButton href="/login?new=1" variant="secondary" trailingIcon={RiArrowRightLine} className="tray-action">Make your own</NavButton>
             </div>
           ),
         },

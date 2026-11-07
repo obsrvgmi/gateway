@@ -13,6 +13,7 @@ export default defineConfig({
     include: ["test/**/*.test.ts", "packages/**/*.test.ts"],
     exclude: ["node_modules", ".next", "test/live/**"],
     environment: "node",
+    globalSetup: ["./test/support/global-postgres.ts"],
     testTimeout: 30_000,
     hookTimeout: 120_000,
   },

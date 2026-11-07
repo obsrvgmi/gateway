@@ -19,7 +19,7 @@ import { CheckoutWidget } from "@/components/checkout/checkout-widget";
 import { NavButton } from "@/components/nav-button";
 import { PAY_ASSETS } from "@/lib/assets";
 import { embedSnippet } from "@/lib/embed";
-import { WIDGET_DEFAULTS } from "@/lib/seed";
+import { WIDGET_DEFAULTS } from "@/lib/defaults";
 import { actions, newId, useGateway } from "@/lib/store";
 import type { AssetSymbol, Widget, WidgetRadius, WidgetSuccessMode, WidgetTheme } from "@/lib/types";
 import { useOrigin } from "@/lib/use-origin";
@@ -249,7 +249,6 @@ function WidgetBuilder({ existing }: { existing?: Widget }) {
                     <div className="flex flex-wrap items-center gap-2">
                       <CopyButton text={code} label="Embed code" disabled={!savedId || dirty}>Copy code</CopyButton>
                       {dirty && savedId && <Hint>Save first, so the code matches.</Hint>}
-                      <SimulatedTag>The script doesn&apos;t exist yet</SimulatedTag>
                     </div>
                   </TabPanel>
                 );
@@ -264,7 +263,7 @@ function WidgetBuilder({ existing }: { existing?: Widget }) {
               <SegmentedControlItem id="light" aria-label="On a light page"><RiSunLine className="size-4" aria-hidden /></SegmentedControlItem>
               <SegmentedControlItem id="dark" aria-label="On a dark page"><RiMoonLine className="size-4" aria-hidden /></SegmentedControlItem>
             </SegmentedControl>
-            <SimulatedTag>Preview, nothing is recorded</SimulatedTag>
+            <SimulatedTag>Preview, illustrative prices</SimulatedTag>
             <SegmentedControl aria-label="Preview size" selectedKeys={[device]} onSelectionChange={(keys) => { const next = [...keys][0]; if (next) setDevice(next as "desktop" | "phone"); }}>
               <SegmentedControlItem id="desktop" aria-label="Desktop width"><RiComputerLine className="size-4" aria-hidden /></SegmentedControlItem>
               <SegmentedControlItem id="phone" aria-label="Phone width"><RiSmartphoneLine className="size-4" aria-hidden /></SegmentedControlItem>

@@ -3,19 +3,20 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { RiAddLine, RiArrowDownSLine, RiLayoutMasonryLine, RiLinksLine, RiMenuLine, RiSearchLine } from "@remixicon/react";
 import { ThemeToggle } from "@/components/application/theme/theme-toggle";
 import { Button } from "@/components/base/buttons/button";
 import { Dropdown, DropdownGroup, DropdownItem, DropdownPopover, DropdownTrigger } from "@/components/base/dropdown/dropdown";
 import { Kbd } from "@/components/base/kbd/kbd";
 import { preloadCommandPalette } from "./preload";
-import { SimulatedTag } from "./ui";
+import { NotificationBell } from "./notification-bell";
+import { ModeTag } from "./ui";
 import { guardedPush } from "./unsaved";
 
 const CommandPalette = dynamic(() => preloadCommandPalette().then((module) => module.CommandPalette), { ssr: false });
 
-const TITLES: Record<string, string> = { dashboard: "Overview", payments: "Payments", payouts: "Payouts", links: "Payment Links", widgets: "Widgets", settings: "Settings", new: "New", edit: "Edit" };
+const TITLES: Record<string, string> = { dashboard: "Overview", payments: "Payments", payouts: "Payouts", links: "Payment Links", widgets: "Widgets", settings: "Settings", notifications: "Notifications", statements: "Statements", new: "New", edit: "Edit" };
 
 /** Path segments that name a screen. An id between them is skipped. */
 function crumbs(pathname: string) {
@@ -29,7 +30,7 @@ function crumbs(pathname: string) {
   return trail;
 }
 
-export function TopBar({ onOpenNavigation }: { onOpenNavigation: () => void }) {
+export function TopBar({ onOpenNavigation, railToggle }: { onOpenNavigation: () => void; railToggle?: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [searching, setSearching] = useState(false);
@@ -57,6 +58,7 @@ export function TopBar({ onOpenNavigation }: { onOpenNavigation: () => void }) {
   return (
     <header className="dash-bar">
       <Button variant="ghost" iconOnly leadingIcon={RiMenuLine} aria-label="Open navigation" onClick={onOpenNavigation} className="-ms-1 lg:hidden" />
+      {railToggle}
       <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1.5 text-body-medium">
         {trail.map((crumb, index) => (
           <Fragment key={crumb.href}>
@@ -69,7 +71,8 @@ export function TopBar({ onOpenNavigation }: { onOpenNavigation: () => void }) {
           </Fragment>
         ))}
       </nav>
-      <SimulatedTag className="hidden sm:inline-flex" />
+      <ModeTag className="hidden sm:inline-flex" />
+      <NotificationBell />
       <button type="button" onClick={() => setSearching(true)} aria-label="Search and jump to" className="dash-search">
         <RiSearchLine className="size-4" aria-hidden />
         <span className="hidden w-32 text-start md:inline">Search</span>
