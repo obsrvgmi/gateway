@@ -13,7 +13,9 @@ export const DEMO_NOW = Date.UTC(2026, 10, 5, 18, 0, 0);
 const DAY = 86_400_000;
 const daysAgo = (days: number) => new Date(DEMO_NOW - days * DAY).toISOString();
 
-const LINKS: PaymentLink[] = [
+const LINK_DEFAULTS = { metadata: {}, singleUse: false, publicStats: false };
+
+const LINKS: PaymentLink[] = ([
   { id: "lnk_8fk2m1", title: "Brand sprint deposit", description: "50% deposit for the December brand sprint.", amount: 2400, receiveAsset: "USDC", status: "active", expiresAt: null, successUrl: "https://lumen.studio/thanks", createdAt: daysAgo(612) },
   { id: "lnk_q3v9xa", title: "Design retainer", description: "Monthly retainer, billed in advance.", amount: 4800, receiveAsset: "USDC", status: "active", expiresAt: null, successUrl: "https://lumen.studio/thanks", createdAt: daysAgo(724) },
   { id: "lnk_t7h4zp", title: "Type specimen, print run", description: "Limited edition of 200.", amount: 79, receiveAsset: "USDT", status: "active", expiresAt: "2026-12-20T00:00:00.000Z", successUrl: "", createdAt: daysAgo(364) },
@@ -25,7 +27,7 @@ const LINKS: PaymentLink[] = [
   { id: "lnk_m5s1rc", title: "Template pack, volume two", description: "Forty layouts with source files.", amount: 49, receiveAsset: "ETH", status: "active", expiresAt: null, successUrl: "", createdAt: daysAgo(305) },
   { id: "lnk_v8e3tn", title: "Studio zine, issue four", description: "Printed and shipped worldwide.", amount: 18, receiveAsset: "USDT", status: "active", expiresAt: "2026-11-24T00:00:00.000Z", successUrl: "", createdAt: daysAgo(58) },
   { id: "lnk_k2p7wq", title: "Extended commercial license for the complete type family, all weights and optical sizes", description: "Web, print and app use for teams of up to fifty.", amount: 12500, receiveAsset: "USDC", status: "active", expiresAt: null, successUrl: "https://lumen.studio/thanks", createdAt: daysAgo(268) },
-];
+] as Omit<PaymentLink, keyof typeof LINK_DEFAULTS>[]).map((link) => ({ ...LINK_DEFAULTS, ...link }));
 
 /** Days ago each seeded link stopped taking payments, and how often it is chosen. */
 const LINK_TRAITS: Record<string, { weight: number; closedDaysAgo?: number }> = {

@@ -73,7 +73,16 @@ export default async function globalSetup() {
 
   // A merchant's own website on another origin, with the widget embedded the way our docs say.
   const site: Server = createServer((request, response) => {
-    const id = new URL(request.url ?? "/", "http://x").searchParams.get("widget") ?? "";
+    const query = new URL(request.url ?? "/", "http://x").searchParams;
+    // An order page, the way the docs say: popup checkout for one link, and its public counter.
+    const link = /^lnk_[a-z0-9]+$/.exec(query.get("link") ?? "")?.[0];
+    if (link) {
+      response.writeHead(200, { "Content-Type": "text/html" }).end(`<!doctype html><title>A shop</title><h1>Order 1234</h1><button id="pay">Pay with crypto</button>
+      <p id="events"></p><p>Raised: <span id="raised" data-gateway-stats="${link}"></span></p><script src="${APP_URL}/widget.js"></script>
+      <script>document.getElementById("pay").onclick=()=>Gateway.checkout({link:"${link}",onSettled:(d)=>{document.getElementById("events").textContent="settled:"+d.paymentId}}).then((d)=>{document.getElementById("events").textContent+=" closed:"+d.status})</script>`);
+      return;
+    }
+    const id = query.get("widget") ?? "";
     response.writeHead(200, { "Content-Type": "text/html" }).end(`<!doctype html><title>A shop</title><h1>Checkout on a merchant's site</h1><div id="host"><script src="${APP_URL}/widget.js" data-widget="${id}" async></script></div>
       <p id="events"></p><script>document.addEventListener("gateway:settled",(e)=>{document.getElementById("events").textContent="settled:"+e.detail.paymentId})</script>`);
   }).listen(SITE_PORT);

@@ -226,6 +226,7 @@ function WidgetBuilder({ existing }: { existing?: Widget }) {
               <Input label="Button label" value={draft.buttonLabel} onChange={(value) => set("buttonLabel", value)} />
               <SwitchCard title="Show branding" description="Adds a small non-custodial note under the checkout." isSelected={draft.showBranding} onChange={(value) => set("showBranding", value)} />
               <SwitchCard title="Ask for email" description="Adds a receipt email field. Nothing is sent in this demo." isSelected={draft.collectEmail} onChange={(value) => set("collectEmail", value)} />
+              <SwitchCard title="Show totals publicly" description="Anyone can read this checkout's total raised and payment count, for a counter on your site." isSelected={draft.publicStats} onChange={(value) => set("publicStats", value)} />
             </div>
           </Panel>
 

@@ -177,6 +177,8 @@ export async function createSession(source: Source, input: { payAsset: AssetSymb
       recipient: target.recipient,
       recipientType: target.recipientType,
       live: provider().kind === "oneclick",
+      // A snapshot: editing the link later doesn't change what this payment was for.
+      metadata: source.kind === "link" ? source.link.metadata : {},
     })
     .onConflictDoNothing({ target: [schema.payments.sourceId, schema.payments.idempotencyKey] })
     .returning({ id: schema.payments.id });

@@ -55,7 +55,7 @@ export function assertPaymentBounds(usd: number) {
  * asked for. Quotes touching Bitcoin don't verify, with NEAR's own SDK either, dry or live, either way
  * round (found 2026-11-06). Until NEAR explains why, those routes stay closed with real money.
  */
-const UNVERIFIABLE_CHAINS = new Set(["btc"]);
+export const UNVERIFIABLE_CHAINS = new Set(["btc"]);
 export const hasUnverifiableRoute = (assets: AssetSymbol[]) => provider().kind === "oneclick" && assets.some((asset) => UNVERIFIABLE_CHAINS.has(ASSETS[asset].blockchain));
 
 /** The off switches: `payments` stops everything, `chain:x` and `asset:Y` one route. In-flight payments keep polling. */

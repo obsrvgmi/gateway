@@ -22,6 +22,7 @@ const SM = "server/payments/state-machine.ts";
 const S = "lib/sign-intent.ts";
 const ENGINE = ["test/payments.test.ts", "test/money-guards.test.ts", "test/guard-coverage.test.ts"];
 const ROUTES = ["test/routes.test.ts"];
+const DEV = ["test/developers.test.ts"];
 
 /** `[name, file, find, replace, tests]`. Replacing with `if (false)` keeps the code parsing. */
 const MUTANTS = [
@@ -251,6 +252,18 @@ const MUTANTS = [
   ["webhook: replay window", "server/crypto.ts", "if (Math.abs(nowSeconds - timestamp) > toleranceSeconds) return false;", "", ["test/webhooks.test.ts"]],
   ["webhook: alerts stay internal", "server/jobs.ts", "if (!NOT_WEBHOOKS.test(event.type)) {", "if (true) {", ["test/webhooks.test.ts"]],
   ["sanctions: never empties", "server/jobs.ts", "if (!addresses.length) continue;", "if (!addresses.length) { await db().delete(schema.screenedAddresses); continue; }", ["test/webhooks.test.ts"]],
+  // Developer surface
+  ["single use: closes once paid", "server/payments/source.ts", 'if (source.link.singleUse && source.paid) return "This link has already been paid.";', "", DEV],
+  ["single use: counts only money arriving", "server/payments/source.ts", 'export const PAID_STATES = ["deposit_seen", "incomplete_deposit", "processing", "settled", "underpaid", "refund_pending", "refunded"];', 'export const PAID_STATES = ["awaiting_deposit", "deposit_seen", "incomplete_deposit", "processing", "settled", "underpaid", "refund_pending", "refunded"];', DEV],
+  ["single use: this link only", "server/payments/source.ts", "eq(schema.payments.sourceId, sourceId), inArray(schema.payments.state, PAID_STATES)", "inArray(schema.payments.state, PAID_STATES)", DEV],
+  ["metadata: snapshot onto the payment", "server/payments/checkout.ts", 'metadata: source.kind === "link" ? source.link.metadata : {},', "", DEV],
+  ["metadata: dashboard re-save keeps it", "server/resources.ts", "...(input.metadata !== undefined && { metadata: input.metadata })", "metadata: input.metadata ?? {}", DEV],
+  ["public stats: off unless turned on", "app/api/checkout/[sourceId]/stats/route.ts", "if (!enabled) throw", "if (false) throw", DEV],
+  ["public stats: settled only", "server/stats.ts", "inArray(schema.payments.state, SETTLED_STATES)", "notInArray(schema.payments.state, UNPAID_STATES)", DEV],
+  ["stats: own workspace", "server/stats.ts", "eq(schema.payments.orgId, orgId),\n        eq(schema.payments.live, live),", "eq(schema.payments.live, live),", DEV],
+  ["list: cursor stays in its workspace", "app/api/v1/payments/route.ts", "and p.org_id = ${orgId}", "", DEV],
+  ["list: status filter", "app/api/v1/payments/route.ts", "states ? inArray(schema.payments.state, states) : undefined,", "undefined,", DEV],
+  ["return url: http and https only", "lib/return-url.ts", 'if (url.protocol !== "https:" && url.protocol !== "http:") return null;', "", DEV],
 ];
 
 const words = process.argv.slice(2).map((word) => word.toLowerCase());

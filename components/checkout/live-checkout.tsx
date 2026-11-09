@@ -11,6 +11,7 @@ import { Spinner } from "@/components/base/spinner/spinner";
 import { Rosette } from "@/components/brand/rosette";
 import { TokenMark } from "@/components/brand/token-mark";
 import { addressError, isValidAddress } from "@/lib/address";
+import { returnUrl } from "@/lib/return-url";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import { sendGuard, type SendRecord } from "@/lib/send-guard";
 import { ASSETS } from "@/lib/assets";
@@ -108,9 +109,15 @@ const recall = (sourceId: string) => {
   }
 };
 
-/** Tells the merchant's page what happened, when embedded. Carries nothing the customer's page couldn't see. */
+/**
+ * Tells the merchant's page what happened: the page framing the widget, or the page that opened this
+ * checkout with `Gateway.checkout()`. Carries nothing the customer's page couldn't see, which is why
+ * any origin may hear it. Fulfilment still waits for a signed webhook.
+ */
 function tellParent(type: string, data: Record<string, unknown> = {}) {
-  if (window.parent !== window) window.parent.postMessage({ source: "gateway", type, ...data }, "*");
+  const message = { source: "gateway", type, ...data };
+  if (window.parent !== window) window.parent.postMessage(message, "*");
+  else if (window.opener && type !== "resize") (window.opener as Window).postMessage(message, "*");
 }
 
 function useCountdown(until: string | null) {
@@ -469,7 +476,8 @@ function Progress({ session }: { session: Session }) {
 }
 
 function Receipt({ session, source }: { session: Session; source: PublicSource }) {
-  const redirect = source.success?.mode === "redirect" ? source.success.url : source.successUrl;
+  const successUrl = source.success?.mode === "redirect" ? source.success.url : source.successUrl;
+  const redirect = successUrl ? returnUrl(successUrl, { paymentId: session.id, sourceId: source.id }) : null;
   const message = source.success?.mode === "message" ? source.success.message : null;
   return (
     <div className="flex flex-col gap-3 motion-safe:animate-[checkout-state_320ms_ease-out_both]" role="status">
@@ -566,7 +574,7 @@ export function LiveCheckout({ sourceId }: { sourceId: string }) {
     if (!session || told.current === session.state) return;
     told.current = session.state;
     tellParent("payment.state", { paymentId: session.id, state: session.state, status: session.status });
-    if (session.state === "settled") tellParent("payment.settled", { paymentId: session.id });
+    if (session.state === "settled") tellParent("payment.settled", { paymentId: session.id, state: session.state, status: session.status });
   }, [session]);
 
   useEffect(() => {

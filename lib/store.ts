@@ -115,8 +115,8 @@ export function newId(prefix: string, length = 20) {
 
 const patchSettings = (body: Record<string, unknown>) => api("/api/settings", { method: "PATCH", body });
 
-function linkBody({ id, title, description, amount, receiveAsset, status, expiresAt, successUrl }: PaymentLink) {
-  return { id, title, description, amount, receiveAsset, status, expiresAt, successUrl };
+function linkBody({ id, title, description, amount, receiveAsset, status, expiresAt, successUrl, metadata, singleUse, publicStats }: PaymentLink) {
+  return { id, title, description, amount, receiveAsset, status, expiresAt, successUrl, metadata, singleUse, publicStats };
 }
 
 function widgetBody(widget: Widget) {
