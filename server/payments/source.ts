@@ -28,6 +28,17 @@ async function hasPaidPayment(orgId: string, sourceId: string) {
   return Boolean(row);
 }
 
+/**
+ * True when this session's address is still waiting but its single-use link has been paid by someone
+ * else. The address can't be withdrawn (the route issued it), so checkout warns the customer not to send.
+ */
+export async function closedByAnotherPayment(row: { id: string; orgId: string; sourceId: string; sourceType: string; state: string }) {
+  if (row.sourceType !== "link" || row.state !== "awaiting_deposit") return false;
+  const [link] = await db().select({ singleUse: schema.paymentLinks.singleUse }).from(schema.paymentLinks).where(eq(schema.paymentLinks.id, row.sourceId)).limit(1);
+  // A waiting address is never itself in PAID_STATES, so any paid payment found is someone else's.
+  return Boolean(link?.singleUse) && (await hasPaidPayment(row.orgId, row.sourceId));
+}
+
 /** A link or widget by its public id. Deleted ones don't exist as far as a customer can tell. */
 export async function loadSource(id: string): Promise<Source> {
   if (id.startsWith("lnk_")) {

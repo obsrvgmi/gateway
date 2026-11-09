@@ -91,9 +91,9 @@ export const OPENAPI = {
       get: {
         operationId: "listPayments",
         summary: "List payments",
-        description: "Newest first. Addresses issued but never paid aren't payments and aren't listed. When `has_more` is true, pass the last payment's id as `starting_after`.",
+        description: "Newest first. An address that was issued and is still waiting for money isn't listed; once its timer runs out it's listed as `expired`. When `has_more` is true, pass the last payment's id as `starting_after`.",
         parameters: [
-          { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 200, default: 50 } },
+          { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 200, default: 50 }, description: "Up to 200. Larger values are read as 200." },
           { name: "starting_after", in: "query", schema: id("pay", "pay_3kq9z"), description: "The last payment id of the previous page." },
           { name: "link", in: "query", schema: { type: "string", pattern: "^(lnk|wgt)_[a-z0-9]+$" }, description: "Only payments made through this link or widget." },
           { name: "status", in: "query", schema: { type: "string", enum: ["processing", "settled", "refunded", "expired", "failed"] } },

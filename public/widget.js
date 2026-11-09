@@ -19,6 +19,7 @@
   if (!script || !script.src) return;
   var origin = new URL(script.src).origin;
   var ID = /^(lnk|wgt)_[a-z0-9]+$/;
+  var WIDGET = /^wgt_[a-z0-9]+$/;
 
   function fromGateway(event, frame) {
     var data = event.data;
@@ -35,16 +36,21 @@
     };
   }
 
-  /** Puts the checkout in an iframe inside `host`. Your page never touches the customer's wallet. */
-  function mount(host, options) {
+  /**
+   * Puts a widget's checkout in an iframe inside `host`. Your page never touches the customer's wallet.
+   * Widgets only: a payment link is hosted checkout, which no other site may frame.
+   */
+  function mount(host, options, before) {
     var id = options && options.widget;
-    if (!host || !id || !ID.test(id)) throw new Error("Gateway.mount needs an element and a widget id (wgt_...).");
+    if (!host || !id || !WIDGET.test(id)) throw new Error("Gateway.mount needs an element and a widget id (wgt_...).");
     var frame = document.createElement("iframe");
     frame.src = origin + "/embed/" + id;
     frame.title = "Checkout";
     frame.setAttribute("allow", "clipboard-write");
     frame.style.cssText = "width:100%;max-width:420px;height:620px;border:0;background:transparent;display:block";
-    host.appendChild(frame);
+    // The script tag puts the frame where the tag sits, as it always has; mount() appends it.
+    if (before) host.insertBefore(frame, before);
+    else host.appendChild(frame);
     function onMessage(event) {
       var data = fromGateway(event, frame.contentWindow);
       if (!data) return;
@@ -82,8 +88,11 @@
    * popup. If it's blocked anyway, the page goes to checkout instead, and your success URL brings the
    * customer back. Resolves when the popup closes, with the last thing it said.
    */
+  var current = null;
   function checkout(options) {
     options = options || {};
+    // One checkout window at a time: a second call reuses it, so the first call stops listening first.
+    if (current) current();
     var width = 460;
     var height = 760;
     var left = Math.max(0, (window.screenX || 0) + ((window.outerWidth || width) - width) / 2);
@@ -109,6 +118,12 @@
         popup.location.href = url;
         if (popup.focus) popup.focus();
         return new Promise(function (resolve) {
+          function stop() {
+            window.clearInterval(timer);
+            window.removeEventListener("message", onMessage);
+            if (current === stop) current = null;
+            resolve(last);
+          }
           function onMessage(event) {
             var data = fromGateway(event, popup);
             if (!data) return;
@@ -119,11 +134,10 @@
           window.addEventListener("message", onMessage);
           var timer = window.setInterval(function () {
             if (!popup.closed) return;
-            window.clearInterval(timer);
-            window.removeEventListener("message", onMessage);
             if (options.onClose) options.onClose(last);
-            resolve(last);
+            stop();
           }, 400);
+          current = stop;
         });
       })
       .catch(function (error) {
@@ -174,12 +188,11 @@
   // The original form: a checkout where the tag sits.
   var widget = script.getAttribute("data-widget");
   if (widget) {
-    if (!ID.test(widget) || widget.indexOf("wgt_") !== 0) {
+    if (!WIDGET.test(widget)) {
       console.error("Gateway: data-widget is missing or invalid.");
       return;
     }
-    var host = document.createElement("div");
-    script.parentNode.insertBefore(host, script);
-    mount(host, { widget: widget });
+    // Events are raised on the tag's parent, which is where existing pages listen.
+    mount(script.parentNode, { widget: widget }, script);
   }
 })();

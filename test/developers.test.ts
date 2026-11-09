@@ -17,6 +17,10 @@ import { closedReason, loadSource, publicSource } from "@/server/payments/source
 import { OPENAPI } from "@/lib/openapi";
 import { returnUrl } from "@/lib/return-url";
 import { GET as publicStats } from "@/app/api/checkout/[sourceId]/stats/route";
+import { POST as startSession } from "@/app/api/checkout/[sourceId]/sessions/route";
+import { GET as readSession } from "@/app/api/checkout/sessions/[id]/route";
+import { POST as reportDeposit } from "@/app/api/checkout/sessions/[id]/deposit/route";
+import { embedFrameAncestors } from "@/server/embed-policy";
 import { PATCH as patchLink } from "@/app/api/links/[id]/route";
 import { POST as postLink } from "@/app/api/links/route";
 import { GET as openapiRoute } from "@/app/api/v1/openapi.json/route";
@@ -36,13 +40,13 @@ afterAll(async () => close());
 
 type Handler = (request: NextRequest, context: { params: Promise<Record<string, string>> }) => Promise<Response>;
 
-async function call(handler: Handler, options: { method?: string; body?: unknown; bearer?: string; token?: string; params?: Record<string, string>; path?: string; origin?: string | null } = {}) {
+async function call(handler: Handler, options: { method?: string; body?: unknown; bearer?: string; token?: string; params?: Record<string, string>; path?: string; origin?: string | null; headers?: Record<string, string> } = {}) {
   const method = options.method ?? (options.body === undefined ? "GET" : "POST");
-  const headers = new Headers();
+  const headers = new Headers(options.headers);
   if (options.body !== undefined) headers.set("content-type", "application/json");
   if (options.bearer) headers.set("authorization", `Bearer ${options.bearer}`);
   if (options.token) headers.set("cookie", `${SESSION_COOKIE}=${options.token}`);
-  if (method !== "GET" && options.token && options.origin !== null) headers.set("origin", options.origin ?? APP_URL);
+  if (method !== "GET" && (options.token || options.origin) && options.origin !== null) headers.set("origin", options.origin ?? APP_URL);
   const request = new NextRequest(`${APP_URL}${options.path ?? "/x"}`, { method, headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
   const response = await handler(request, { params: Promise.resolve(options.params ?? {}) });
   // Response bodies are read loosely here; their shapes are what each test asserts.
@@ -174,6 +178,76 @@ describe("single-use links", () => {
   });
 });
 
+describe("a checkout session's token", () => {
+  const start = async (linkId: string) => {
+    const result = await call(startSession as Handler, { origin: APP_URL, params: { sourceId: linkId }, body: { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: idem() } });
+    expect(result.status, JSON.stringify(result.body)).toBe(201);
+    return result.body as { id: string; token: string };
+  };
+
+  it("is the only thing that opens the session: the pay_ id alone opens nothing", async () => {
+    const { secret } = await merchant();
+    const link = await apiLink(secret, {});
+    const session = await start(link.id);
+    expect(session.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect((await call(readSession as Handler, { params: { id: session.id } })).status).toBe(404);
+    expect((await call(readSession as Handler, { params: { id: session.id }, headers: { "x-session-token": "x".repeat(43) } })).status).toBe(404);
+    const opened = await call(readSession as Handler, { params: { id: session.id }, headers: { "x-session-token": session.token } });
+    expect(opened.status).toBe(200);
+    expect(opened.body.id).toBe(session.id);
+    // Another session's token doesn't open this one.
+    const other = await start(link.id);
+    expect((await call(readSession as Handler, { params: { id: session.id }, headers: { "x-session-token": other.token } })).status).toBe(404);
+  });
+
+  it("is needed to report a deposit, so a pay_ id from a webhook or URL can't mark one sent", async () => {
+    const { secret } = await merchant();
+    const session = await start((await apiLink(secret, {})).id);
+    expect((await call(reportDeposit as Handler, { origin: APP_URL, params: { id: session.id }, body: { txHash: "0xabcdef0123456789" } })).status).toBe(404);
+    expect((await paymentById(session.id)).clientTxHash).toBeNull();
+    expect((await call(reportDeposit as Handler, { origin: APP_URL, params: { id: session.id }, body: { txHash: "0xabcdef0123456789" }, headers: { "x-session-token": session.token } })).status).toBe(200);
+    expect((await paymentById(session.id)).clientTxHash).toBe("0xabcdef0123456789");
+  });
+
+  it("comes back the same on a retry with the same idempotency key", async () => {
+    const { secret } = await merchant();
+    const link = await apiLink(secret, {});
+    const body = { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: idem() };
+    const first = await call(startSession as Handler, { origin: APP_URL, params: { sourceId: link.id }, body });
+    const again = await call(startSession as Handler, { origin: APP_URL, params: { sourceId: link.id }, body });
+    expect(again.body.id).toBe(first.body.id);
+    expect(again.body.token).toBe(first.body.token);
+  });
+});
+
+describe("an earlier address on a single-use link", () => {
+  it("is told the link was paid by someone else, and only then", async () => {
+    const { orgId, secret } = await merchant();
+    const link = await apiLink(secret, { singleUse: true });
+    const waiting = await call(startSession as Handler, { origin: APP_URL, params: { sourceId: link.id }, body: { payAsset: "ETH", refundAddress: CUSTOMER, idempotencyKey: idem() } });
+    const read = async () => (await call(readSession as Handler, { params: { id: waiting.body.id }, headers: { "x-session-token": waiting.body.token } })).body.closedByAnotherPayment;
+    expect(await read()).toBe(false);
+    const paid = await paymentRow(orgId, link.id, "processing");
+    expect(await read()).toBe(true);
+    // A reusable link never warns.
+    await db().update(schema.paymentLinks).set({ singleUse: false }).where(eq(schema.paymentLinks.id, link.id));
+    expect(await read()).toBe(false);
+    void paid;
+  });
+});
+
+describe("framing", () => {
+  it("lets only a widget's own site frame it, and nothing frame a hosted link", async () => {
+    const { orgId, secret } = await merchant();
+    const link = await apiLink(secret, {});
+    expect(await embedFrameAncestors(link.id)).toContain("frame-ancestors 'none'");
+    const widgetId = newId("wgt_");
+    await db().insert(schema.widgets).values({ id: widgetId, orgId, name: "Shop", site: "shop.example", accent: "#00EC97", receiveAsset: "USDC", acceptedAssets: ["ETH"], presets: [], success: { mode: "receipt", message: "", url: "" } });
+    expect(await embedFrameAncestors(widgetId)).toContain("frame-ancestors https://shop.example http://shop.example");
+    expect(await embedFrameAncestors("wgt_doesnotexist")).toContain("frame-ancestors 'none'");
+  });
+});
+
 describe("listing payments", () => {
   it("filters by link and status, and pages with a cursor", async () => {
     const { orgId, secret } = await merchant();
@@ -210,6 +284,13 @@ describe("listing payments", () => {
     const page = await call(v1Payments as Handler, { bearer: mine.secret, path: `/api/v1/payments?starting_after=${theirPayment}` });
     expect(page.status).toBe(200);
     expect(page.body.data).toEqual([]);
+  });
+
+  it("still reads old limit and before values the way it used to", async () => {
+    const { secret } = await merchant();
+    for (const query of ["limit=500", "limit=", "limit=abc", "before=2026-11-09", "before=", "limit=&before="]) {
+      expect((await call(v1Payments as Handler, { bearer: secret, path: `/api/v1/payments?${query}` })).status, query).toBe(200);
+    }
   });
 
   it("refuses an unknown status rather than ignoring it", async () => {

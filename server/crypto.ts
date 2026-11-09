@@ -33,3 +33,19 @@ export function verifyWebhookSignature(header: string, body: string, secret: str
   const given = Buffer.from(parts.v1, "hex");
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
+
+/**
+ * The key to one checkout session, for the customer's browser only. Derived from the payment id with the
+ * server's secret, so nothing is stored and every session has one. The `pay_` id is only a reference:
+ * it goes to webhooks, the API and the success URL, and on its own opens nothing.
+ */
+export function checkoutSessionToken(paymentId: string, secret: string) {
+  return createHmac("sha256", secret).update(`checkout-session:${paymentId}`).digest("base64url");
+}
+
+export function checkoutSessionTokenValid(paymentId: string, token: string | null, secret: string) {
+  if (!token) return false;
+  const expected = Buffer.from(checkoutSessionToken(paymentId, secret));
+  const given = Buffer.from(token);
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}

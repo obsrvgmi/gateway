@@ -263,6 +263,11 @@ const MUTANTS = [
   ["stats: own workspace", "server/stats.ts", "eq(schema.payments.orgId, orgId),\n        eq(schema.payments.live, live),", "eq(schema.payments.live, live),", DEV],
   ["list: cursor stays in its workspace", "app/api/v1/payments/route.ts", "and p.org_id = ${orgId}", "", DEV],
   ["list: status filter", "app/api/v1/payments/route.ts", "states ? inArray(schema.payments.state, states) : undefined,", "undefined,", DEV],
+  ["session token: reading needs it", "app/api/checkout/sessions/[id]/route.ts", "assertSessionToken(request, id);", "", DEV],
+  ["session token: reporting a deposit needs it", "app/api/checkout/sessions/[id]/deposit/route.ts", "assertSessionToken(request, id);", "", DEV],
+  ["session token: compared whole", "server/crypto.ts", "const given = Buffer.from(token);\n  return given.length === expected.length && timingSafeEqual(given, expected);", "return true;", DEV],
+  ["single use: warns an earlier address", "server/payments/source.ts", "return Boolean(link?.singleUse) && (await hasPaidPayment(row.orgId, row.sourceId));", "return false;", DEV],
+  ["embed: a link can't be framed", "server/embed-policy.ts", "const site = row ? row.site : NOT_A_WIDGET;", 'const site = row?.site ?? "";', DEV],
   ["return url: http and https only", "lib/return-url.ts", 'if (url.protocol !== "https:" && url.protocol !== "http:") return null;', "", DEV],
 ];
 

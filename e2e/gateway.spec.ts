@@ -258,8 +258,11 @@ test("a shop opens checkout for one order in a popup, hears it settle, and shows
   expect(await popup.getByRole("link", { name: /Return to/ }).getAttribute("href")).toMatch(/^https:\/\/shop\.example\/thanks\?order=1234&payment_id=pay_[a-z0-9]+&source_id=lnk_[a-z0-9]+$/);
   await popup.close();
   await expect(shop.locator("#events")).toContainText("closed:settled");
-  await shop.reload();
-  await expect(shop.locator("#raised")).toHaveText("$250 from 1 payment");
+  // Public totals are kept for a few seconds, so reload until the counter catches up.
+  await expect(async () => {
+    await shop.reload();
+    await expect(shop.locator("#raised")).toHaveText("$250 from 1 payment", { timeout: 3000 });
+  }).toPass({ timeout: 30_000 });
 
   // The customer who paid still sees their receipt on the link.
   const mine = await context.newPage();

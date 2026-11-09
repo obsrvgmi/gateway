@@ -471,7 +471,7 @@ function Content({ sandboxUrl, liveUrl, assets, states, limits }: DocsProps) {
               title: "Show the result when they come back",
               body: (
                 <>
-                  <P>After paying, the customer can return to your <C>successUrl</C>, which gets <C>payment_id</C> and <C>source_id</C> added. Anyone can type those, so read the payment with your key before showing anything.</P>
+                  <P>After paying, the customer can return to your <C>successUrl</C>, which gets <C>payment_id</C> and <C>source_id</C> added. The id is only a reference, safe in a URL, and anyone can type one, so read the payment with your key before showing anything.</P>
                   <Code
                     title="Your thank-you page, Node"
                     code={`// GET /thanks?payment_id=pay_...
@@ -494,7 +494,7 @@ render({ status: payment.status });`}
           head={["Option", "What it does"]}
           mono={1}
           rows={[
-            ["singleUse", "Closes the link once a customer's money arrives, so an order can't be paid twice by accident. If two people open it at once, both could pay: refund the extra one."],
+            ["singleUse", "Closes the link once a customer's money arrives, so an order can't be paid twice by accident. An address issued before that can't be withdrawn, so a customer still holding one is told not to send. If they send anyway, the money still reaches you: refund the extra payment."],
             ["Idempotency-Key", "Your order id, sent as a header. Retrying the request returns the same link instead of making a second one."],
             ["expiresAt", "Closes the link at a time you choose. A payment already under way still completes."],
             ["amount: null", "The customer types the amount, for tips and open invoices."],
@@ -514,9 +514,11 @@ render({ status: payment.status });`}
     Gateway.checkout({
       // Your server creates the link (see Hosted checkout) and returns it.
       link: () => fetch("/orders/1234/crypto-link", { method: "POST" }).then((r) => r.json()),
-      onSettled: ({ paymentId }) => showPaid(paymentId), // for your interface only
-    }).then(({ status }) => {
-      if (status !== "settled") showTryAgain();
+      onSettled: () => showPaid(), // for your interface only
+    }).then(() => {
+      // The window closed. Your server knows from the webhook whether money is on its way,
+      // so ask it rather than guessing here: never offer "try again" on close alone.
+      refreshOrderStatus();
     });
   });
 </script>`}
@@ -531,6 +533,7 @@ render({ status: payment.status });`}
             ["Blocked popup", "If the browser blocks the window anyway, the page goes to checkout instead, and your successUrl brings the customer back."],
           ]}
         />
+        <Callout tone="warn" title="Don't offer a second payment on close">A customer may close the window a moment after sending from another wallet app, before anything has arrived, so <C>status</C> can still be <C>processing</C> with money on its way. When the window closes, ask your server, which hears from the webhook. A one-payment link also refuses a second payment once money arrives.</Callout>
         <Callout tone="warn" title="Browser events are for your interface">They run on the customer&apos;s machine, so anyone can fake one. Show &ldquo;paid&rdquo; from them if you like, but ship from the webhook.</Callout>
       </DocSection>
 
@@ -695,7 +698,7 @@ export function Checkout({ widget }) {
             ["Gateway-Event", "The event type, such as payment.settled."],
             ["Gateway-Event-Id", "evt_…, the same on every retry. De-duplicate on it."],
             ["Gateway-Signature", "t=<unix seconds>,v1=<hex HMAC-SHA256>. See Check a signature."],
-            ["Gateway-Delivery", "This attempt's id, for support."],
+            ["Gateway-Delivery", "The delivery's id, the same on every retry. Quote it to support."],
             ["User-Agent", "Gateway-Webhooks/1"],
           ]}
         />
@@ -858,7 +861,7 @@ func verify(raw []byte, header, secret string) bool {
       <DocSection id="lifecycle">
         <P>Branch on <C>status</C>. It only ever takes these five values. <C>state</C> is the finer detail behind it, for logs and support, and can gain new values.</P>
         <StatusMap states={states} />
-        <P>The API lists a payment once money is on its way. An address that was issued but never paid isn&apos;t a payment, so it isn&apos;t listed, and nothing is sent about it.</P>
+        <P>An address that was issued but hasn&apos;t been paid isn&apos;t listed and sends nothing while it waits. If its timer runs out it becomes <C>expired</C>: from then on it&apos;s listed, sends <C>payment.expired</C>, and counts in stats, as in the dashboard.</P>
       </DocSection>
 
       <DocSection id="assets">

@@ -59,8 +59,25 @@ export async function merchantStats(orgId: string, filter: { since?: Date; until
   };
 }
 
-/** A public counter's figures: settled total and count, nothing about who paid. */
+/**
+ * A public counter is polled by every visitor of the page it sits on, so each source's figures are kept
+ * for a few seconds. Per process, which is enough: a counter a few seconds behind is still right.
+ */
+const PUBLIC_TTL_MS = 10_000;
+const publicCache = new Map<string, { at: number; value: Awaited<ReturnType<typeof readPublicTotals>> }>();
+
 export async function publicTotals(orgId: string, sourceId: string) {
+  const key = `${orgId}:${sourceId}:${currentMode()}`;
+  const hit = publicCache.get(key);
+  if (hit && Date.now() - hit.at < PUBLIC_TTL_MS) return hit.value;
+  const value = await readPublicTotals(orgId, sourceId);
+  if (publicCache.size > 10_000) publicCache.clear();
+  publicCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
+/** A public counter's figures: settled total and count, nothing about who paid. */
+async function readPublicTotals(orgId: string, sourceId: string) {
   const live = currentMode();
   const [row] = await db()
     .select({ count: sql<number>`count(*)::int`, usd: sql<string>`coalesce(sum(${schema.payments.usd}), 0)` })

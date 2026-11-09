@@ -21,7 +21,7 @@ const LIVE_URL = process.env.DOCS_LIVE_URL ?? "https://web-production-0cb6e.up.r
 const MEANING: Record<PaymentState, string> = {
   quoting: "Checkout is asking the route for a price and an address. Not a payment yet, so the API doesn't list it.",
   quote_failed: "No address could be issued, so nothing could be paid. Not listed by the API.",
-  awaiting_deposit: "An address was issued and is waiting for the customer. Not a payment until money arrives.",
+  awaiting_deposit: "An address was issued and is waiting for the customer. Not listed while it waits; if the timer runs out it becomes expired.",
   deposit_seen: "The customer's coins reached the address.",
   incomplete_deposit: "Less than the quote's minimum arrived. The route returns it to the customer.",
   processing: "The route is converting the coins and sending them to you.",

@@ -160,7 +160,8 @@ function LinkMenu({ link }: { link: PaymentLink }) {
             icon={RiFileCopy2Line}
             label="Duplicate"
             onSelect={run(() => {
-              actions.addLink({ ...link, id: newId("lnk_"), title: `${link.title} copy`, status: "paused", createdAt: new Date().toISOString() });
+              // Metadata names the original's order, so a copy must not carry it: a payment on the copy would look like one for that order.
+              actions.addLink({ ...link, metadata: {}, id: newId("lnk_"), title: `${link.title} copy`, status: "paused", createdAt: new Date().toISOString() });
               toast.success("Link duplicated", { description: "The copy starts paused." });
             })}
           />
