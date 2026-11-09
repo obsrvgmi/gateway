@@ -10,6 +10,7 @@ import { Label } from "@/components/base/input/label";
 import { Input } from "@/components/base/input/input";
 import { NumberField } from "@/components/base/number-field/number-field";
 import { SegmentedControl, SegmentedControlItem } from "@/components/base/segmented-control/segmented-control";
+import { SwitchCard } from "@/components/base/switch/switch-card";
 import { Textarea } from "@/components/base/textarea/textarea";
 import { toast } from "@/components/base/toast/toast";
 import { CheckoutWidget } from "@/components/checkout/checkout-widget";
@@ -64,6 +65,8 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
   const [receiveAsset, setReceiveAsset] = useState<AssetSymbol>(existing?.receiveAsset ?? settings.receiveAsset);
   const [expiry, setExpiry] = useState<CalendarDate | null>(existing?.expiresAt ? parseDate(existing.expiresAt.slice(0, 10)) : null);
   const [successUrl, setSuccessUrl] = useState(existing?.successUrl ?? "");
+  const [singleUse, setSingleUse] = useState(existing?.singleUse ?? false);
+  const [publicStats, setPublicStats] = useState(existing?.publicStats ?? false);
   const [submitted, setSubmitted] = useState(false);
   const [created, setCreated] = useState<PaymentLink | null>(null);
   // Two steps when creating. Editing shows everything at once, because someone came to change one thing.
@@ -71,8 +74,8 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
   const showDetails = Boolean(existing) || step === 1;
   const showOptions = Boolean(existing) || step === 2;
   const expiryValue = expiry?.toString() ?? null;
-  const [baseline] = useState(() => JSON.stringify([title, description, fixed, amount, receiveAsset, expiryValue, successUrl]));
-  const dirty = !created && JSON.stringify([title, description, fixed, amount, receiveAsset, expiryValue, successUrl]) !== baseline;
+  const [baseline] = useState(() => JSON.stringify([title, description, fixed, amount, receiveAsset, expiryValue, successUrl, singleUse, publicStats]));
+  const dirty = !created && JSON.stringify([title, description, fixed, amount, receiveAsset, expiryValue, successUrl, singleUse, publicStats]) !== baseline;
   const unsavedDialog = useUnsavedGuard(dirty);
 
   const titleInvalid = submitted && !title.trim();
@@ -113,6 +116,8 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
       receiveAsset,
       expiresAt: expiry ? `${expiry.toString()}T00:00:00.000Z` : null,
       successUrl,
+      singleUse,
+      publicStats,
     };
     if (existing) {
       actions.updateLink(existing.id, fields);
@@ -120,7 +125,7 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
       router.push("/dashboard/links");
       return;
     }
-    const link: PaymentLink = { ...fields, id: newId("lnk_"), status: "active", createdAt: new Date().toISOString() };
+    const link: PaymentLink = { ...fields, metadata: {}, id: newId("lnk_"), status: "active", createdAt: new Date().toISOString() };
     actions.addLink(link);
     toast.success("Link created", { description: "It's ready to share." });
     setCreated(link);
@@ -178,7 +183,12 @@ function LinkForm({ existing }: { existing?: PaymentLink }) {
                 <DatePicker aria-label="Expiry date" value={expiry} onChange={setExpiry} />
                 {expiryInvalid && <p className="text-caption-1-regular text-text-error-primary">Pick a date in the future.</p>}
               </div>
-              <Input label="Success URL (optional)" placeholder="https://yoursite.com/thanks" type="url" value={successUrl} onChange={setSuccessUrl} isInvalid={urlInvalid} errorMessage="Enter a full https:// URL." />
+              <Input label="Success URL (optional)" placeholder="https://yoursite.com/thanks" type="url" value={successUrl} onChange={setSuccessUrl} isInvalid={urlInvalid} errorMessage="Enter a full https:// URL." hint="We add payment_id to it, so your page can look the payment up." />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SwitchCard title="One payment only" description="Closes once a customer's payment arrives. Use it for a single order or invoice." isSelected={singleUse} onChange={setSingleUse} />
+              <SwitchCard title="Show totals publicly" description="Anyone can read this link's total raised and payment count, for a counter on your site." isSelected={publicStats} onChange={setPublicStats} />
             </div>
 
             </>}

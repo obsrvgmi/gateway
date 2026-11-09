@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { ASSETS, ASSET_SYMBOLS } from "@/lib/assets";
 import type { AssetSymbol } from "@/lib/types";
 import { db, schema } from "../db";
@@ -11,10 +11,33 @@ export type LinkRow = typeof schema.paymentLinks.$inferSelect;
 export type WidgetRow = typeof schema.widgets.$inferSelect;
 
 export type Source =
-  | { kind: "link"; id: string; name: string; org: Organization; link: LinkRow; amount: number | null; receiveAsset: AssetSymbol; accepted: AssetSymbol[] }
+  | { kind: "link"; id: string; name: string; org: Organization; link: LinkRow; amount: number | null; receiveAsset: AssetSymbol; accepted: AssetSymbol[]; paid: boolean }
   | { kind: "widget"; id: string; name: string; org: Organization; widget: WidgetRow; amount: number | null; receiveAsset: AssetSymbol; accepted: AssetSymbol[] };
 
 const toAmount = (value: string | null) => (value === null ? null : Number(value));
+
+/**
+ * States where a customer's money has arrived, or is arriving, for a payment. A single-use link closes
+ * on these. An address issued but unpaid doesn't count, because someone may still be choosing, and a
+ * payment that failed, expired or was returned by the route reopens it.
+ */
+export const PAID_STATES = ["deposit_seen", "incomplete_deposit", "processing", "settled", "underpaid", "refund_pending", "refunded"];
+
+async function hasPaidPayment(orgId: string, sourceId: string) {
+  const [row] = await db().select({ id: schema.payments.id }).from(schema.payments).where(and(eq(schema.payments.orgId, orgId), eq(schema.payments.sourceId, sourceId), inArray(schema.payments.state, PAID_STATES))).limit(1);
+  return Boolean(row);
+}
+
+/**
+ * True when this session's address is still waiting but its single-use link has been paid by someone
+ * else. The address can't be withdrawn (the route issued it), so checkout warns the customer not to send.
+ */
+export async function closedByAnotherPayment(row: { id: string; orgId: string; sourceId: string; sourceType: string; state: string }) {
+  if (row.sourceType !== "link" || row.state !== "awaiting_deposit") return false;
+  const [link] = await db().select({ singleUse: schema.paymentLinks.singleUse }).from(schema.paymentLinks).where(eq(schema.paymentLinks.id, row.sourceId)).limit(1);
+  // A waiting address is never itself in PAID_STATES, so any paid payment found is someone else's.
+  return Boolean(link?.singleUse) && (await hasPaidPayment(row.orgId, row.sourceId));
+}
 
 /** A link or widget by its public id. Deleted ones don't exist as far as a customer can tell. */
 export async function loadSource(id: string): Promise<Source> {
@@ -25,7 +48,10 @@ export async function loadSource(id: string): Promise<Source> {
       .innerJoin(schema.organizations, eq(schema.organizations.id, schema.paymentLinks.orgId))
       .where(and(eq(schema.paymentLinks.id, id), isNull(schema.paymentLinks.deletedAt)))
       .limit(1);
-    if (row) return { kind: "link", id, name: row.link.title, org: row.org, link: row.link, amount: toAmount(row.link.amountUsd), receiveAsset: row.link.receiveAsset as AssetSymbol, accepted: ASSET_SYMBOLS };
+    if (row) {
+      const paid = row.link.singleUse ? await hasPaidPayment(row.org.id, id) : false;
+      return { kind: "link", id, name: row.link.title, org: row.org, link: row.link, amount: toAmount(row.link.amountUsd), receiveAsset: row.link.receiveAsset as AssetSymbol, accepted: ASSET_SYMBOLS, paid };
+    }
   }
   if (id.startsWith("wgt_")) {
     const [row] = await db()
@@ -45,6 +71,7 @@ export function closedReason(source: Source, now = Date.now()): string | null {
   if (source.kind === "link") {
     if (source.link.status === "paused") return "This link is paused.";
     if (source.link.status === "expired" || (source.link.expiresAt && source.link.expiresAt.getTime() <= now)) return "This link has expired.";
+    if (source.link.singleUse && source.paid) return "This link has already been paid.";
   } else if (source.widget.status === "paused") {
     return "This checkout is paused.";
   }

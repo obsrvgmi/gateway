@@ -16,6 +16,11 @@ export type PaymentState =
   | "refund_pending"
   | "refunded";
 
+export const PAYMENT_STATES: PaymentState[] = ["quoting", "quote_failed", "awaiting_deposit", "deposit_seen", "incomplete_deposit", "processing", "settled", "underpaid", "provider_refunded", "failed", "expired", "refund_pending", "refunded"];
+
+/** States that aren't a payment yet: an address being prepared, refused, or issued and never paid. The API and stats leave them out. */
+export const UNPAID_STATES: PaymentState[] = ["quoting", "quote_failed", "awaiting_deposit"];
+
 const FROM_PROVIDER: Record<Exclude<ProviderStatus, "PENDING_DEPOSIT">, PaymentState> = {
   KNOWN_DEPOSIT_TX: "deposit_seen",
   INCOMPLETE_DEPOSIT: "incomplete_deposit",

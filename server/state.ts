@@ -29,6 +29,9 @@ export function toLink(row: LinkRow): PaymentLink {
     status: expired ? "expired" : (row.status as PaymentLink["status"]),
     expiresAt: row.expiresAt?.toISOString() ?? null,
     successUrl: row.successUrl,
+    metadata: row.metadata,
+    singleUse: row.singleUse,
+    publicStats: row.publicStats,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -52,6 +55,7 @@ export function toWidget(row: WidgetRow): Widget {
     logo: row.logo,
     collectEmail: row.collectEmail,
     success: row.success as WidgetSuccess,
+    publicStats: row.publicStats,
     createdAt: row.createdAt.toISOString(),
   };
 }

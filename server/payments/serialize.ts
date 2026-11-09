@@ -89,6 +89,7 @@ export function paymentEventBody(row: PaymentRow) {
     receive: { asset: row.receiveAsset, chain: receive.chain, amount_base: row.receivedBase ?? row.receiveBase, decimals: receive.tokenDecimals },
     payer: row.payer,
     customer_email: row.customerEmail,
+    metadata: row.metadata,
     origin_tx_hashes: row.originTxHashes.map((tx) => tx.hash),
     destination_tx_hashes: row.destinationTxHashes.map((tx) => tx.hash),
     created_at: row.createdAt.toISOString(),

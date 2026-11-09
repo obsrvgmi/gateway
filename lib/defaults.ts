@@ -3,7 +3,7 @@ import type { AssetSymbol, GatewayState, WidgetSuccess } from "./types";
 const RECEIPT: WidgetSuccess = { mode: "receipt", message: "", url: "" };
 
 /** What the widget builder starts from. */
-export const WIDGET_DEFAULTS = { acceptedAssets: ["ETH", "BTC", "SOL", "NEAR", "USDT", "USDC", "BNB", "ARB"] as AssetSymbol[], presets: [] as number[], displayName: "", logo: "", collectEmail: false, success: RECEIPT };
+export const WIDGET_DEFAULTS = { acceptedAssets: ["ETH", "BTC", "SOL", "NEAR", "USDT", "USDC", "BNB", "ARB"] as AssetSymbol[], presets: [] as number[], displayName: "", logo: "", collectEmail: false, success: RECEIPT, publicStats: false };
 
 /** Before the first load. Shared by the server render and the first client render, so they match. */
 export const EMPTY_STATE: GatewayState = {

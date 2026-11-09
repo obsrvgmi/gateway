@@ -119,6 +119,12 @@ export const paymentLinks = pgTable(
     status: text("status").notNull().default("active"),
     expiresAt: at("expires_at"),
     successUrl: text("success_url").notNull().default(""),
+    /** The merchant's own keys and values, such as an order id. Copied onto each payment; never shown to the customer. */
+    metadata: jsonb("metadata").$type<Record<string, string>>().notNull().default({}),
+    /** Closes once a payment for it has money arriving. */
+    singleUse: boolean("single_use").notNull().default(false),
+    /** Lets anyone read its settled total and count, for a counter on the merchant's site. */
+    publicStats: boolean("public_stats").notNull().default(false),
     sample: boolean("sample").notNull().default(false),
     expiryNoticeAt: at("expiry_notice_at"),
     createdAt: createdAt(),
@@ -148,6 +154,7 @@ export const widgets = pgTable(
     logo: text("logo").notNull().default(""),
     collectEmail: boolean("collect_email").notNull().default(false),
     success: jsonb("success").$type<{ mode: string; message: string; url: string }>().notNull(),
+    publicStats: boolean("public_stats").notNull().default(false),
     sample: boolean("sample").notNull().default(false),
     createdAt: createdAt(),
     deletedAt: at("deleted_at"),
@@ -202,6 +209,8 @@ export const payments = pgTable(
     /** The refunded amount in `receiveAsset` base units, summed from completed refunds. */
     refundedBase: base("refunded_base").notNull().default("0"),
     live: boolean("live").notNull().default(false),
+    /** The link's metadata when the payment started. A later edit to the link doesn't rewrite it. */
+    metadata: jsonb("metadata").$type<Record<string, string>>().notNull().default({}),
     sample: boolean("sample").notNull().default(false),
     nextPollAt: at("next_poll_at"),
     pollFailures: integer("poll_failures").notNull().default(0),

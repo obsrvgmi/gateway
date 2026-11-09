@@ -1,7 +1,8 @@
 import "server-only";
 import type { NextRequest } from "next/server";
+import { checkoutSessionTokenValid } from "../crypto";
 import { env } from "../env";
-import { HttpError } from "../http/errors";
+import { HttpError, notFound } from "../http/errors";
 import { clientIp } from "../http/route";
 import { rateLimit } from "../http/rate-limit";
 
@@ -20,4 +21,12 @@ export function assertCountryAllowed(request: NextRequest) {
   if (country && BLOCKED_COUNTRIES.split(",").map((code) => code.trim().toUpperCase()).includes(country)) {
     throw new HttpError(451, "region_blocked", "Payments aren't available in your region.");
   }
+}
+
+/**
+ * A session is opened by its token, which only the customer's browser holds. A missing or wrong token
+ * gets the same 404 as a missing payment, so holding a `pay_` id reveals nothing.
+ */
+export function assertSessionToken(request: NextRequest, paymentId: string) {
+  if (!checkoutSessionTokenValid(paymentId, request.headers.get("x-session-token"), env().SECRET_KEY)) throw notFound("This payment isn't available.");
 }

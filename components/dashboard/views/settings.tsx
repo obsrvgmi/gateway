@@ -288,7 +288,7 @@ function WebhooksCard({ hooks }: { hooks: Webhook[] }) {
   };
 
   return (
-    <Panel title="Webhooks" description="Signed events sent to your server." actions={<Button variant="secondary" size="small" leadingIcon={RiAddLine} onClick={() => setAdding(true)}>Add endpoint</Button>} className="col-span-12 @5xl:col-span-7">
+    <Panel title="Webhooks" description={<>Signed events sent to your server. <a href="/docs#verify" className="text-text-accent underline">Checking signatures</a></>} actions={<Button variant="secondary" size="small" leadingIcon={RiAddLine} onClick={() => setAdding(true)}>Add endpoint</Button>} className="col-span-12 @5xl:col-span-7">
       {hooks.length === 0 ? <EmptyState icon={RiWebhookLine} title="No webhooks" description="Add an endpoint to hear about payments on your server." /> : (
         <ul className="flex flex-col divide-y divide-separator-border">
           {hooks.map((hook) => (
@@ -439,7 +439,7 @@ function ApiKeys({ keys }: { keys: ApiKey[] }) {
   };
 
   return (
-    <Panel title="API keys" description="For your server. See the API docs. A key can read payments and manage links, and can never move funds." actions={<Button variant="secondary" size="small" leadingIcon={RiAddLine} onClick={() => setCreating(true)}>New key</Button>} className="col-span-12 @5xl:col-span-5">
+    <Panel title="API keys" description={<>For your server. A key can read payments and manage links, and can never move funds. <a href="/docs#quickstart" className="text-text-accent underline">Read the docs</a></>} actions={<Button variant="secondary" size="small" leadingIcon={RiAddLine} onClick={() => setCreating(true)}>New key</Button>} className="col-span-12 @5xl:col-span-5">
       {keys.length === 0 ? (
         <EmptyState icon={RiKey2Line} title="No API keys" description="Create a key to connect your server." />
       ) : (

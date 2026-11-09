@@ -230,6 +230,53 @@ test("an embedded widget takes a payment on another site", async ({ browser }) =
   await context.close();
 });
 
+test("a shop opens checkout for one order in a popup, hears it settle, and shows its public total", async ({ browser }) => {
+  await merchant.goto("/dashboard/links/new");
+  await merchant.getByLabel("Title").fill("Order 1234");
+  await merchant.getByRole("button", { name: "Next" }).click();
+  await merchant.getByLabel("Success URL (optional)").fill("https://shop.example/thanks?order=1234");
+  await merchant.getByText("One payment only").click();
+  await merchant.getByText("Show totals publicly").click();
+  await merchant.getByRole("button", { name: "Create link" }).click();
+  await expect(merchant.getByRole("heading", { name: "Your link is live" })).toBeVisible();
+  const url = (await merchant.locator("div[dir=ltr]").filter({ hasText: "/pay/" }).first().textContent()) ?? "";
+  const linkId = /lnk_[a-z0-9]+/.exec(url)?.[0];
+  expect(linkId).toBeTruthy();
+
+  const context = await browser.newContext();
+  const shop = await context.newPage();
+  await shop.goto(`http://localhost:${SITE_PORT}/?link=${linkId}`);
+  await expect(shop.locator("#raised")).toHaveText("$0 from 0 payments");
+  const [popup] = await Promise.all([shop.waitForEvent("popup"), shop.getByRole("button", { name: "Pay with crypto" }).click()]);
+  await popup.getByRole("radio", { name: "Ether on Ethereum" }).check({ force: true });
+  await popup.getByLabel(/Your Ethereum wallet/).fill(CUSTOMER_WALLET);
+  await popup.getByRole("button", { name: "Continue to payment" }).click();
+  await popup.getByRole("button", { name: "Simulate payment" }).click();
+  await expect(popup.getByText("Payment complete")).toBeVisible({ timeout: 60_000 });
+  await expect(shop.locator("#events")).toContainText("settled:pay_");
+  // The way back names the payment, so the shop's page can look it up.
+  expect(await popup.getByRole("link", { name: /Return to/ }).getAttribute("href")).toMatch(/^https:\/\/shop\.example\/thanks\?order=1234&payment_id=pay_[a-z0-9]+&source_id=lnk_[a-z0-9]+$/);
+  await popup.close();
+  await expect(shop.locator("#events")).toContainText("closed:settled");
+  // Public totals are kept for a few seconds, so reload until the counter catches up.
+  await expect(async () => {
+    await shop.reload();
+    await expect(shop.locator("#raised")).toHaveText("$250 from 1 payment", { timeout: 3000 });
+  }).toPass({ timeout: 30_000 });
+
+  // The customer who paid still sees their receipt on the link.
+  const mine = await context.newPage();
+  await mine.goto(url);
+  await expect(mine.getByText("Payment complete")).toBeVisible();
+  await context.close();
+  // One payment only: anyone else finds it closed.
+  const stranger = await browser.newContext();
+  const again = await stranger.newPage();
+  await again.goto(url);
+  await expect(again.getByText("This link has already been paid.")).toBeVisible();
+  await stranger.close();
+});
+
 async function customerPays() {
   const context = await merchant.context().browser()!.newContext();
   const page = await context.newPage();
@@ -312,10 +359,13 @@ test("security headers are on, and the dashboard can't be framed", async ({ requ
   expect(page.headers()["x-frame-options"]).toBe("DENY");
   expect(page.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
   expect(page.headers()["x-content-type-options"]).toBe("nosniff");
-  // A widget nobody named a site for may go anywhere, which is what the embed test relies on.
-  const embed = await request.get("/embed/wgt_probe");
-  expect(embed.headers()["content-security-policy"]).toContain("frame-ancestors *");
-  expect(embed.headers()["x-frame-options"]).toBeUndefined();
+  // Only a real widget may be framed (one with no site named goes anywhere, as the embed test shows).
+  // A missing widget, or a hosted link, chose no site, so no site may frame it.
+  for (const path of ["/embed/wgt_probe", "/embed/lnk_probe"]) {
+    const embed = await request.get(path);
+    expect(embed.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(embed.headers()["x-frame-options"]).toBeUndefined();
+  }
 });
 
 test("the API is closed without a key, and a mutating request from another origin is refused", async ({ request }) => {

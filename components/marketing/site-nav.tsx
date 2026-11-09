@@ -12,6 +12,7 @@ import { cx } from "@/utils/cx";
 const LINKS = [
   { href: "#links", label: "Payment Links" },
   { href: "#widgets", label: "Widgets" },
+  { href: "/docs", label: "Docs" },
   { href: "/dashboard", label: "Dashboard" },
 ];
 const SECTIONS = ["links", "widgets"];

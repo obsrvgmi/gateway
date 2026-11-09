@@ -15,6 +15,12 @@ export interface PaymentLink {
   status: LinkStatus;
   expiresAt: string | null;
   successUrl: string;
+  /** The merchant's own labels, such as an order id. Set through the API; copied onto each payment. */
+  metadata: Record<string, string>;
+  /** Closes once a payment for it has money arriving. */
+  singleUse: boolean;
+  /** Anyone may read its settled total and count, for a counter on the merchant's site. */
+  publicStats: boolean;
   createdAt: string;
 }
 
@@ -40,6 +46,8 @@ export interface Widget {
   logo: string;
   collectEmail: boolean;
   success: WidgetSuccess;
+  /** Anyone may read its settled total and count, for a counter on the merchant's site. */
+  publicStats: boolean;
   createdAt: string;
 }
 

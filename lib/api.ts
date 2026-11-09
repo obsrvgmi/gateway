@@ -16,12 +16,12 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
+export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
       method: init.method ?? (init.body === undefined ? "GET" : "POST"),
-      headers: init.body === undefined ? undefined : { "Content-Type": "application/json" },
+      headers: { ...(init.body === undefined ? {} : { "Content-Type": "application/json" }), ...init.headers },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       signal: init.signal,
     });

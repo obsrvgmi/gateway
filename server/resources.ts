@@ -25,12 +25,14 @@ export async function createLink(input: z.output<typeof linkCreate>, actor: Acto
   const [existing] = await db().select().from(schema.paymentLinks).where(eq(schema.paymentLinks.id, id)).limit(1);
   if (existing && existing.orgId !== actor.orgId) throw conflict("That id is already in use.");
   const values = { title: input.title, description: input.description, amountUsd: usd(input.amount), receiveAsset: input.receiveAsset, status: input.status, expiresAt: when(input.expiresAt), successUrl: input.successUrl };
+  // Left out means "unchanged" on a re-save, and the default on a new link.
+  const extras = { ...(input.metadata !== undefined && { metadata: input.metadata }), ...(input.singleUse !== undefined && { singleUse: input.singleUse }), ...(input.publicStats !== undefined && { publicStats: input.publicStats }) };
   if (existing) {
-    const [row] = await db().update(schema.paymentLinks).set({ ...values, deletedAt: null }).where(eq(schema.paymentLinks.id, id)).returning();
+    const [row] = await db().update(schema.paymentLinks).set({ ...values, ...extras, deletedAt: null }).where(eq(schema.paymentLinks.id, id)).returning();
     return toLink(row);
   }
   return db().transaction(async (tx) => {
-    const [row] = await tx.insert(schema.paymentLinks).values({ id, orgId: actor.orgId, ...values }).returning();
+    const [row] = await tx.insert(schema.paymentLinks).values({ id, orgId: actor.orgId, ...values, ...extras }).returning();
     await audit(tx, { orgId: actor.orgId, actorType: actor.actorType, actorId: actor.actorId, action: "link.created", target: id, ip: actor.ip });
     await emit(tx, actor.orgId, "link.created", { id, title: row.title, amount_usd: input.amount, receive_asset: input.receiveAsset });
     return toLink(row);
@@ -48,6 +50,9 @@ export async function updateLink(id: string, patch: z.output<typeof linkPatch>, 
       ...(patch.status !== undefined && { status: patch.status }),
       ...(patch.expiresAt !== undefined && { expiresAt: when(patch.expiresAt) }),
       ...(patch.successUrl !== undefined && { successUrl: patch.successUrl }),
+      ...(patch.metadata !== undefined && { metadata: patch.metadata }),
+      ...(patch.singleUse !== undefined && { singleUse: patch.singleUse }),
+      ...(patch.publicStats !== undefined && { publicStats: patch.publicStats }),
     })
     .where(and(eq(schema.paymentLinks.id, id), eq(schema.paymentLinks.orgId, actor.orgId)))
     .returning();

@@ -27,6 +27,11 @@ const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a six-digit hex colo
 /** Raster images only. An SVG data URL can carry script. */
 const logoDataUrl = z.string().max(120_000).refine((value) => value === "" || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value), "Logo must be a PNG, JPEG or WebP image.");
 
+/** The merchant's own labels for a link, such as an order id. Strings only, so nothing is coerced on the way back. */
+export const metadataField = z
+  .record(z.string().regex(/^[A-Za-z0-9_.-]{1,40}$/, "Metadata keys are 1 to 40 letters, digits, dots, dashes or underscores."), z.string().max(500, "A metadata value is at most 500 characters."))
+  .refine((value) => Object.keys(value).length <= 20, "Use at most 20 metadata keys.");
+
 /**
  * The shape with no defaults. Zod keeps `.default()` through `.partial()`, so a patch built on a schema
  * with defaults would write them for every field left out: one `{ title }` would reopen a paused link
@@ -40,13 +45,23 @@ const linkShape = z.object({
   status: z.enum(["active", "paused", "expired"]),
   expiresAt: isoDate.nullable(),
   successUrl: webUrl,
+  metadata: metadataField,
+  singleUse: z.boolean(),
+  publicStats: z.boolean(),
 });
 
+/**
+ * Fields the dashboard doesn't edit stay optional with no default, so re-saving a link the API made
+ * can't wipe its metadata. `createLink` applies the defaults on insert only.
+ */
 export const linkFields = linkShape.extend({
   description: linkShape.shape.description.default(""),
   status: linkShape.shape.status.default("active"),
   expiresAt: linkShape.shape.expiresAt.default(null),
   successUrl: linkShape.shape.successUrl.default(""),
+  metadata: linkShape.shape.metadata.optional(),
+  singleUse: linkShape.shape.singleUse.optional(),
+  publicStats: linkShape.shape.publicStats.optional(),
 });
 
 export const linkCreate = linkFields.extend({ id: clientId("lnk_").optional() });
@@ -78,6 +93,7 @@ const widgetShape = z.object({
   logo: logoDataUrl,
   collectEmail: z.boolean(),
   success: widgetSuccess,
+  publicStats: z.boolean(),
 });
 
 export const widgetFields = widgetShape.extend({
@@ -90,6 +106,7 @@ export const widgetFields = widgetShape.extend({
   displayName: widgetShape.shape.displayName.default(""),
   logo: widgetShape.shape.logo.default(""),
   collectEmail: widgetShape.shape.collectEmail.default(false),
+  publicStats: widgetShape.shape.publicStats.optional(),
 });
 
 export const widgetCreate = widgetFields.extend({ id: clientId("wgt_").optional() });

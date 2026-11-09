@@ -11,6 +11,7 @@ import { Spinner } from "@/components/base/spinner/spinner";
 import { Rosette } from "@/components/brand/rosette";
 import { TokenMark } from "@/components/brand/token-mark";
 import { addressError, isValidAddress } from "@/lib/address";
+import { returnUrl } from "@/lib/return-url";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import { sendGuard, type SendRecord } from "@/lib/send-guard";
 import { ASSETS } from "@/lib/assets";
@@ -85,16 +86,23 @@ interface Session {
   returnReason: string | null;
   originTxs: { hash: string; explorerUrl: string }[];
   destinationTxs: { hash: string; explorerUrl: string }[];
+  /** The key to this session, held only by this browser. The `pay_` id alone opens nothing. */
+  token?: string;
+  /** This address is still open, but its one-payment link was paid by someone else. */
+  closedByAnotherPayment?: boolean;
 }
+
+const sessionHeaders = (token: string | undefined) => (token ? { "x-session-token": token } : undefined);
 
 const RADIUS: Record<WidgetRadius, string> = { rounded: "rounded-3xl", soft: "rounded-2xl", sharp: "rounded-lg" };
 const POLL_MS = 4_000;
 const SEEN = new Set(["deposit_seen", "incomplete_deposit", "processing"]);
 
 const storageKey = (sourceId: string) => `gateway:checkout:${sourceId}`;
-const remember = (sourceId: string, sessionId: string | null) => {
+/** Stored as `id.token`. The token is what opens the session; the id is only its name. */
+const remember = (sourceId: string, session: { id: string; token?: string } | null) => {
   try {
-    if (sessionId) window.localStorage.setItem(storageKey(sourceId), sessionId);
+    if (session?.token) window.localStorage.setItem(storageKey(sourceId), `${session.id}.${session.token}`);
     else window.localStorage.removeItem(storageKey(sourceId));
   } catch {
     // Without storage, a reload starts over; the old address stays tracked on the server.
@@ -102,15 +110,22 @@ const remember = (sourceId: string, sessionId: string | null) => {
 };
 const recall = (sourceId: string) => {
   try {
-    return window.localStorage.getItem(storageKey(sourceId));
+    const [id, token] = (window.localStorage.getItem(storageKey(sourceId)) ?? "").split(".");
+    return id && token ? { id, token } : null;
   } catch {
     return null;
   }
 };
 
-/** Tells the merchant's page what happened, when embedded. Carries nothing the customer's page couldn't see. */
+/**
+ * Tells the merchant's page what happened: the page framing the widget, or the page that opened this
+ * checkout with `Gateway.checkout()`. Carries nothing the customer's page couldn't see, which is why
+ * any origin may hear it. Fulfilment still waits for a signed webhook.
+ */
 function tellParent(type: string, data: Record<string, unknown> = {}) {
-  if (window.parent !== window) window.parent.postMessage({ source: "gateway", type, ...data }, "*");
+  const message = { source: "gateway", type, ...data };
+  if (window.parent !== window) window.parent.postMessage(message, "*");
+  else if (window.opener && type !== "resize") (window.opener as Window).postMessage(message, "*");
 }
 
 function useCountdown(until: string | null) {
@@ -337,8 +352,8 @@ function Deposit({ session, source, onStartOver }: { session: Session; source: P
   const maybeSent = !sent && record.state === "pending";
   const unreported = !session.depositSubmitted && record.state === "sent" ? record.txHash : null;
   useEffect(() => {
-    if (unreported) void api(`/api/checkout/sessions/${session.id}/deposit`, { body: { txHash: unreported } }).catch(() => undefined);
-  }, [unreported, session.id]);
+    if (unreported) void api(`/api/checkout/sessions/${session.id}/deposit`, { body: { txHash: unreported }, headers: sessionHeaders(session.token) }).catch(() => undefined);
+  }, [unreported, session.id, session.token]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmRestart, setConfirmRestart] = useState(false);
@@ -358,7 +373,7 @@ function Deposit({ session, source, onStartOver }: { session: Session; source: P
       guard.done(txHash);
       // One send per address: the button stays off from here, so a second tap can't pay twice.
       setSent(true);
-      await api(`/api/checkout/sessions/${session.id}/deposit`, { body: { txHash } }).catch(() => undefined);
+      await api(`/api/checkout/sessions/${session.id}/deposit`, { body: { txHash }, headers: sessionHeaders(session.token) }).catch(() => undefined);
     } catch (failure) {
       setError(errorMessage(failure));
     } finally {
@@ -370,6 +385,15 @@ function Deposit({ session, source, onStartOver }: { session: Session; source: P
     setSent(true);
     await api(`/api/checkout/sessions/${session.id}/sim`, { body: { scenario } }).catch((failure: unknown) => setError(errorMessage(failure)));
   };
+
+  if (session.closedByAnotherPayment && !sent) {
+    return (
+      <div className="flex flex-col gap-3" role="alert">
+        <p className="flex items-start gap-2 text-body-regular"><RiAlertLine className="mt-0.5 size-5 shrink-0 text-status-orange-text" aria-hidden />This link has just been paid by someone else. Don&apos;t send anything to this address.</p>
+        <p className="text-body-regular text-text-secondary">If you already sent funds, don&apos;t pay again. They&apos;re still tracked, this page updates when they arrive, and {source.merchant} can refund you.</p>
+      </div>
+    );
+  }
 
   if (overdue && !sent) {
     return (
@@ -469,7 +493,8 @@ function Progress({ session }: { session: Session }) {
 }
 
 function Receipt({ session, source }: { session: Session; source: PublicSource }) {
-  const redirect = source.success?.mode === "redirect" ? source.success.url : source.successUrl;
+  const successUrl = source.success?.mode === "redirect" ? source.success.url : source.successUrl;
+  const redirect = successUrl ? returnUrl(successUrl, { paymentId: session.id, sourceId: source.id }) : null;
   const message = source.success?.mode === "message" ? source.success.message : null;
   return (
     <div className="flex flex-col gap-3 motion-safe:animate-[checkout-state_320ms_ease-out_both]" role="status">
@@ -543,8 +568,8 @@ export function LiveCheckout({ sourceId }: { sourceId: string }) {
     api<PublicSource>(`/api/checkout/${sourceId}/source`).then(setSource).catch((failure: unknown) => setLoadError(errorMessage(failure)));
     const saved = recall(sourceId);
     (saved
-      ? api<Session>(`/api/checkout/sessions/${saved}`)
-          .then(setSession)
+      ? api<Session>(`/api/checkout/sessions/${saved.id}`, { headers: sessionHeaders(saved.token) })
+          .then((fresh) => setSession({ ...fresh, token: saved.token }))
           .catch((failure: unknown) => {
             // Only a real "no such payment" forgets it. An outage must not make money on its way look unpaid.
             if (failure instanceof ApiError && failure.status === 404) remember(sourceId, null);
@@ -557,7 +582,9 @@ export function LiveCheckout({ sourceId }: { sourceId: string }) {
   useEffect(() => {
     if (!session || ["settled", "underpaid", "refunded", "provider_refunded", "refund_pending"].includes(session.state)) return;
     const timer = window.setInterval(() => {
-      api<Session>(`/api/checkout/sessions/${session.id}`).then(setSession).catch(() => undefined);
+      api<Session>(`/api/checkout/sessions/${session.id}`, { headers: sessionHeaders(session.token) })
+        .then((fresh) => setSession({ ...fresh, token: session.token }))
+        .catch(() => undefined);
     }, POLL_MS);
     return () => window.clearInterval(timer);
   }, [session]);
@@ -566,7 +593,7 @@ export function LiveCheckout({ sourceId }: { sourceId: string }) {
     if (!session || told.current === session.state) return;
     told.current = session.state;
     tellParent("payment.state", { paymentId: session.id, state: session.state, status: session.status });
-    if (session.state === "settled") tellParent("payment.settled", { paymentId: session.id });
+    if (session.state === "settled") tellParent("payment.settled", { paymentId: session.id, state: session.state, status: session.status });
   }, [session]);
 
   useEffect(() => {
@@ -578,7 +605,7 @@ export function LiveCheckout({ sourceId }: { sourceId: string }) {
   }, [source]);
 
   const startSession = useCallback((next: Session) => {
-    remember(sourceId, next.id);
+    remember(sourceId, next);
     setSession(next);
   }, [sourceId]);
 
