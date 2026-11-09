@@ -359,10 +359,13 @@ test("security headers are on, and the dashboard can't be framed", async ({ requ
   expect(page.headers()["x-frame-options"]).toBe("DENY");
   expect(page.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
   expect(page.headers()["x-content-type-options"]).toBe("nosniff");
-  // A widget nobody named a site for may go anywhere, which is what the embed test relies on.
-  const embed = await request.get("/embed/wgt_probe");
-  expect(embed.headers()["content-security-policy"]).toContain("frame-ancestors *");
-  expect(embed.headers()["x-frame-options"]).toBeUndefined();
+  // Only a real widget may be framed (one with no site named goes anywhere, as the embed test shows).
+  // A missing widget, or a hosted link, chose no site, so no site may frame it.
+  for (const path of ["/embed/wgt_probe", "/embed/lnk_probe"]) {
+    const embed = await request.get(path);
+    expect(embed.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(embed.headers()["x-frame-options"]).toBeUndefined();
+  }
 });
 
 test("the API is closed without a key, and a mutating request from another origin is refused", async ({ request }) => {
